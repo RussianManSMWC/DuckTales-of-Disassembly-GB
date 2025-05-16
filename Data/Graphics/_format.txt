@@ -1,0 +1,6 @@
+graphics data. very lightly compressed.
+
+first byte is the "key" byte that is used to check for the next action.
+if the byte after the key byte is not 0, it'll serve as a number of repeats writes of the immediate next byte. e.g. key byte is $05, so $05,$06,$FE = repeat $FE byte 6 times
+if the byte after the key byte is 0, end graphics transfer.
+otherwise, transfer bytes like normal until hitting the next key byte.

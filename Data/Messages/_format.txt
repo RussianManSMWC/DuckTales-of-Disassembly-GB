@@ -1,0 +1,5 @@
+format:
+first byte - type of message. 0 - normal message, 1 - statue message (pay 300000 dollars), 2 - launchpad message (take you back to level select)
+bit 7 also sets type of message to ending message, but it is set programmatically.
+$FF - line break
+end message with $00. it automatically puts a comma in the message (except for ending messages).

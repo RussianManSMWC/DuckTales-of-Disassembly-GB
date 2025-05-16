@@ -1,0 +1,8 @@
+Message_FinalRaceFail_00_3F12:
+db $00
+db "CURSE ME KILTS!",$FF
+db "GLOMGOLD HAS THE",$FF
+db "TREASURES.",$FF
+db "I MUST FIGHT",$FF
+db "DRACULA DUCK",$FF
+db "AGAIN",$00

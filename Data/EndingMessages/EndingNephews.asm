@@ -1,0 +1,8 @@
+Message_EndingNephews_03_7ED3:
+db "HUEY DEWEY AND",$FF
+db "LOUIE HOORAY UNCLE",$FF
+db "SCROOGE! WE'RE",$FF
+db "GLAD YOU FOUND THE",$FF
+db "TREASURES. BUT",$FF
+db "DON'T FORGET WE",$FF
+db "HELPED TOO!",$00

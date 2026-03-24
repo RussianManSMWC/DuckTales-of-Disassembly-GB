@@ -1,3 +1,3 @@
-These messages are separate from the level messages, and are not loaded with MessageLoader.asm. They are located in bank 3.
+These messages are separate from the level messages, and are not loaded with MessageLoader.asm. These are located in bank 3.
 
-The format is similar to normal messages, the only difference is that there's no "message type" at the beginning.
+The format is similar to normal messages, the only differences are that there's no "message type" byte at the beginning and they also don't automatically end with a comma.

@@ -10,6 +10,8 @@ def Buffer_Storage = $C0A1                                  ;buffered data stora
 
 def Buffer_WritingFlag = $C1A0                              ;set to 1 when writing to buffer, so any potential interrupts do not read from incomplete buffer
 def CurrentOAMSlot = $C1A1                                  ;counts up by 4 for each used slot
+def CurrentEntityRAMOffset = $C1A2
+
 
 def CurrentMessage = $C1AA
 ;$C1AB - unused
@@ -20,10 +22,25 @@ def MessageLineBuffer = $C1B6                               ;used to move the se
 
 def CounterUpdateBuffer = $C1D6                             ;store stripe data to then transfer into main buffer
 
-def CurrentEntity_YPosScreenRelative = $C201
-def CurrentEntity_XPosScreenRelative = $C203
-def CurrentEntity_AnimationFrame = $C205
-def CurrentEntity_Property = $C20E
+def TeleportationTimer = $C1F6                              ;counts up when teleporting. if bit 7 was enabled at the start, the player will be sent to land select. bit 6 indicates player being on the other side of the teleportation
+def PauseFlag = $C1FD
+
+;fairly certain the first entity is always player
+;entity RAM is between $C200 and $C2FF. each entity reserves 16 bytes, e.g. $C200-$C20F - entity 0, $C210-$C22F - entity 1, etc
+
+;$C20E - entity's behavior pointer
+
+;$C300-$C3FF - also entity memory, also 16 bytes per entity
+
+;current entity is actually $C600?
+
+;$C600-$C61F - copied from entity RAM for current entity variables
+def CurrentEntity_YPosScreenRelative = $C601
+def CurrentEntity_XPosScreenRelative = $C603
+def CurrentEntity_AnimationFrame = $C605
+def CurrentEntity_DataPointer = $C60E                       ;points to a set of data used by the entity, various properties and stuff
+;C610 - entity ID?
+def CurrentEntity_WaitTimer = $C617                         ;counts down until zero, stops data parsing
 
 def FrameCounter = $C620                                    ;16-bit frame counter
 
@@ -61,8 +78,11 @@ def GFXDecompressionBuffer = $CA1F
 def Player_State = $DF50
 def Player_AnimationFrame = $DF51
 def Player_PogoFlag = $DF5A                                 ;using cane in air
+;$DF5E - a flag indicating that the player is holding against a solid object for an extended amount of time, can use cane to hit that something
 def Player_InvincibilityTimer = $DF68
 def MessageQueue = $DF6A                                    ;will display the message stored there
+
+def ScreenShakeTimer = $DF71                                ;handles screen shaking and SFX. note that it does not decrement on its own
 
 def OAMUploadCode = $FF80                                   ;code in RAM
 
@@ -71,6 +91,7 @@ def JoypadInputPress = $FF8C
 
 ;FF8F-FF90 - temporary pointer RAM
 def VBlankWaitCounter = $FF91                               ;used to tell the game to wait for VBlank code. counts down for every VBlank hit.
+def InterruptDisablerMirror = $FF92
 def CurrentProgramBank = $FF93
 ;$FF94 - temporary?
 

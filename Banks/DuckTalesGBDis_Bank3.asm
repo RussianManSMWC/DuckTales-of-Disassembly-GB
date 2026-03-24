@@ -1,3 +1,5 @@
+;PRG ROM $C000-$FFFF
+
 SECTION "bank 3", ROMX, BANK[3]
 
 POINTERS_03_4000:
@@ -17,17 +19,17 @@ dw Graphics_MoonTileset_03_704C
 dw Graphics_EnglishFontAndStatusBar_03_7424
 dw Graphics_TitleScreen_03_7768
 dw Graphics_Ending_03_7AA3
-dw DATA_03_7DE9                                             ;stripe data starts here
-dw DATA_03_7E30
-dw DATA_03_7E61
+dw Layout_EndingChest_03_7DE9                               ;stripe data starts here
+dw Layout_EndingNephewsBorder_03_7E30
+dw Layout_EndingScrooge_03_7E61
 dw Message_EndingNephews_03_7ED3
 dw Message_EndingScroogeMessage_03_7F42
 
-CODE_03_402A:
-JP CODE_03_7FB1
+LoadEndingMessage_JMP_03_402A:
+JP LoadEndingMessage_03_7FB1
 
-CODE_03_402D:
-JP CODE_03_7E1C
+DrawChestScreenFloor_JMP_03_402D:
+JP DrawChestScreenFloor_03_7E1C
 
 ;currently unknown, but it doesn't look like graphics...
 DATA_03_4030:
@@ -177,168 +179,78 @@ incbin "Data/Graphics/TitleScreen.bin"
 Graphics_Ending_03_7AA3:
 incbin "Data/Graphics/Ending.bin"
 
-DATA_03_7DE9:
-db $99,$25
-db 7
-db $C8,$C9,$CA,$CB,$7F,$7F,$7F
+include "Data/Tilemaps/EndingChest.asm"
 
-db $99,$45
-db 7
-db $D8,$D9,$DA,$DB,$CC,$CD,$CE
-
-db $99,$65
-db 7
-db $E8,$E9,$EA,$EB,$DC,$DD,$DE
-
-db $99,$85
-db 7
-db $7F,$FB,$CF,$EF,$EC,$ED,$EE
-
-db $99,$A5
-db 7
-db $7F,$7F,$DF,$FF,$FC,$FD,$FE
-
-db StripeImageWriteCommand_Stop
-
-CODE_03_7E1C:
-LD HL, $99C0
-LD A, $04
-LD C, A
+;draw floor for the ending chest screen
+DrawChestScreenFloor_03_7E1C:
+LD HL, $99C0                                                ;VRAM location for where the floor should be drawn
+LD A, $04                                                   ;base tile for the brick floor (requires two consecutive tiles)
+LD C, A                                                     ;amount of floor lines to draw. also happens to be 4
 
 LOOP_03_7E22:
-LD B, $20
+LD B, 32                                                    ;draw 32 tiles, most of which aren't on-screen
 
 LOOP_03_7E24:
-LD [HL+], A
-XOR $01
-DEC B
-JR NZ, LOOP_03_7E24
-XOR $01
-DEC C
-JR NZ, LOOP_03_7E22
-RET
+LD [HL+], A                                                 ;store tile
+XOR $01                                                     ;alternate for the next tile
+DEC B                                                       ;
+JR NZ, LOOP_03_7E24                                         ;repeat until done with this line
 
-DATA_03_7E30:
-db $98,$22
-db 9|StripeImageCommand_Repeat
-db $36
+XOR $01                                                     ;alternate brick tile between lines
+DEC C                                                       ;
+JR NZ, LOOP_03_7E22                                         ;if not all floor lines are done, keep at it
+RET                                                         ;
 
-db $98,$42
-db 1
-db $35
+include "Data/Tilemaps/EndingNephewsBorder.asm"
 
-db $98,$4A
-db 1
-db $37
-
-db $98,$62
-db 1
-db $35
-
-db $98,$6A
-db 1
-db $37
-
-db $98,$82
-db 1
-db $35
-
-db $98,$8A
-db 1
-db $37
-
-db $98,$A2
-db 1
-db $35
-
-db $98,$AA
-db 1
-db $37
-
-db $98,$C2
-db 1
-db $35
-
-db $98,$CA
-db 1
-db $37
-
-db $98,$E2
-db 9|StripeImageCommand_Repeat
-db $72
-
-db StripeImageWriteCommand_Stop
-
-DATA_03_7E61:
-db $98,$04
-db 12|StripeImageCommand_Repeat
-db $36
-
-db $98,$24
-db 12
-db $35,$6E,$6E,$6E,$81,$82,$83,$6E
-db $6E,$6E,$6E,$37
-
-db $98,$44
-db 12
-db $35,$6E,$6E,$6E,$91,$92,$93,$6E,
-db $6E,$6E,$6E,$37
-
-db $98,$64
-db 12
-db $35,$6E,$6E,$A0,$A1,$A2,$A3,$A4
-db $6E,$6E,$6E,$37
-
-db $98,$84
-db 12
-db $35,$6E,$6E,$B0,$86,$87,$88,$89
-db $8A,$8B,$6E,$37
-
-db $98,$A4
-db 12
-db $35,$6E,$6E,$6E,$96,$97,$98,$99
-db $9A,$9B,$6E,$37
-
-db $98,$C4
-db 12
-db $35,$6E,$6E,$FC,$8C,$8D,$8E,$8F
-db $AD,$AE,$6E,$37
-
-db $98,$E4
-db 12
-db $35,$6E,$6E,$AF,$9C,$9D,$9E,$9F
-db $FE,$FF,$6E,$37
-
-db $99,$04
-db 12|StripeImageCommand_Repeat
-db $72
-
-db StripeImageWriteCommand_Stop
-
-;ending messages
-include "Data/EndingMessages/EndingNephews.asm"
-include "Data/EndingMessages/EndingScrooge.asm"
+SETCHARMAP General
+;ending stuff that differs between versions
+if Version == VERSION_JP
+  include "Data/Tilemaps/EndingScroogeJP.asm"
+  include "Data/EndingMessages/EndingNephewsJP.asm"
+  include "Data/EndingMessages/EndingScroogeJP.asm"
+else
+  include "Data/Tilemaps/EndingScrooge.asm"
+  include "Data/EndingMessages/EndingNephews.asm"
+  include "Data/EndingMessages/EndingScrooge.asm"
+endc
 
 ;load ending messages
-CODE_03_7FB1:
+LoadEndingMessage_03_7FB1:
 LD A, $80                                                   ;message type = ending message.
-LD [CurrentMessageType], A
+LD [CurrentMessageType], A                                  ;
 
 LDH A, [$FF94]
-AND $01
-LD HL, POINTERS_03_4000+(19*2)                              ;loads message from nephews.
+AND $01                                                     ;determine ending message
+LD HL, POINTERS_03_4000+(19*2)                              ;loads message from nephews or scrooge
 RST $28
 LD H, D
 LD L, E
-LD A, $99
-LD [$C1B0], A
 
+LD A, $99                                                   ;VRAM from where we'll be drawing message
+LD [MessageBuffer], A
 LD A, $41
-LD [$C1B1], A
+LD [MessageBuffer+1], A
 
 LD A, $01
-LD [$C1B2], A
+LD [MessageBuffer+2], A
 
-XOR A
-LD [$C1B4], A
+XOR A                                                       ;draw character by character
+LD [MessageBuffer+4], A
 RET
+
+;even more filler weirdness
+if Version == VERSION_EU
+  db $02,$65,$C9,$05,$55,$55,$74,$55
+  db $97,$55,$D5,$55,$20,$20,$08,$08
+  db $00,$02,$00,$2A,$F7,$FF,$FF,$DF
+  db $BF,$FD,$FB,$9D,$08,$09,$91,$20
+  db $10,$10,$00,$A2,$55,$D5,$5D,$55
+  db $57,$55,$55,$ED
+elif Version == VERSION_JP
+  ds 14, $00
+  db $5A,$00,$00,$7A,$41
+  ds 59, $00
+else
+  ds 44, $FF
+endc

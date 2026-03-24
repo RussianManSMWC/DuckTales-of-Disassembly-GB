@@ -1,0 +1,220 @@
+;define font characters
+
+NEWCHARMAP General
+CHARMAP "0",$08
+CHARMAP "1",$18
+CHARMAP "2",$09
+CHARMAP "3",$19
+CHARMAP "4",$0A
+CHARMAP "5",$1A
+CHARMAP "6",$0B
+CHARMAP "7",$1B
+CHARMAP "8",$0C
+CHARMAP "9",$1C
+CHARMAP "A",$0D
+CHARMAP "B",$1D
+CHARMAP "C",$0E
+CHARMAP "D",$1E
+CHARMAP "E",$0F
+CHARMAP "F",$1F
+CHARMAP "G",$28
+CHARMAP "H",$38
+CHARMAP "I",$29
+CHARMAP "J",$39
+CHARMAP "K",$2A
+CHARMAP "L",$3A
+CHARMAP "M",$2B
+CHARMAP "N",$3B
+CHARMAP "O",$2C
+CHARMAP "P",$3C
+CHARMAP "Q",$2D
+CHARMAP "R",$3D
+CHARMAP "S",$2E
+CHARMAP "T",$3E
+CHARMAP "U",$2F
+CHARMAP "V",$3F
+CHARMAP "W",$48
+CHARMAP "X",$58
+CHARMAP "Y",$49
+CHARMAP "Z",$59
+CHARMAP ".",$4A
+CHARMAP "!",$5A
+CHARMAP "'",$4B
+CHARMAP "$",$5B
+CHARMAP " ",$6E
+CHARMAP "-",$79
+CHARMAP ",",$F8
+CHARMAP "/",$F9
+CHARMAP ".,",$FA
+CHARMAP "?",$FB
+
+;katakana is present in all versions of DuckTales. only Japanese version uses it, obviously.
+;Note that the international version's katakana font differs slightly. these mappings are specifically for the Japanese version's font
+CHARMAP "ア",$88
+CHARMAP "イ",$89
+CHARMAP "ウ",$8A
+CHARMAP "エ",$8B
+CHARMAP "オ",$8C
+CHARMAP "カ",$8D
+CHARMAP "キ",$8E
+CHARMAP "ク",$8F ;doesn't really look like this in-game, but what else could this be
+CHARMAP "ケ",$98
+CHARMAP "コ",$99
+CHARMAP "サ",$9A
+CHARMAP "シ",$9B
+CHARMAP "ス",$9C
+CHARMAP "セ",$9D
+CHARMAP "ソ",$9E
+CHARMAP "タ",$9F ;I could be wrong about this one too
+CHARMAP "チ",$A8
+CHARMAP "ツ",$A9
+CHARMAP "テ",$AA
+CHARMAP "ト",$AB
+CHARMAP "ナ",$AC
+CHARMAP "ニ",$AD
+CHARMAP "ヌ",$AE
+CHARMAP "ネ",$AF
+CHARMAP "ノ",$B8
+CHARMAP "ハ",$B9
+CHARMAP "ヒ",$BA
+CHARMAP "フ",$BB
+CHARMAP "ヘ",$BC
+CHARMAP "ホ",$BD
+CHARMAP "マ",$BE
+CHARMAP "ミ",$BF
+CHARMAP "ム",$C8
+CHARMAP "メ",$C9
+CHARMAP "モ",$CA
+CHARMAP "ヤ",$CB
+CHARMAP "ユ",$CC
+CHARMAP "ヨ",$CD
+CHARMAP "ワ",$CE
+CHARMAP "ン",$CF ;I THINK?!
+CHARMAP "ラ",$D8
+CHARMAP "リ",$D9
+CHARMAP "ル",$DA
+CHARMAP "レ",$DB
+CHARMAP "ロ",$DC
+CHARMAP "ﾞ",$DD
+CHARMAP "ャ",$DE
+CHARMAP "ュ",$DF
+CHARMAP "ョ",$E8
+CHARMAP "ッ",$E9
+CHARMAP "゜",$EA
+CHARMAP "ィ",$EB
+CHARMAP "ェ",$F8
+CHARMAP "ォ",$F9
+CHARMAP "ヲ",$FA
+
+NEWCHARMAP TitleScreen ;for some reason title screen has some puncuation as different tiles.
+CHARMAP "0",$08
+CHARMAP "1",$18
+CHARMAP "2",$09
+CHARMAP "3",$19
+CHARMAP "4",$0A
+CHARMAP "5",$1A
+CHARMAP "6",$0B
+CHARMAP "7",$1B
+CHARMAP "8",$0C
+CHARMAP "9",$1C
+CHARMAP "A",$0D
+CHARMAP "B",$1D
+CHARMAP "C",$0E
+CHARMAP "D",$1E
+CHARMAP "E",$0F
+CHARMAP "F",$1F
+CHARMAP "G",$28
+CHARMAP "H",$38
+CHARMAP "I",$29
+CHARMAP "J",$39
+CHARMAP "K",$2A
+CHARMAP "L",$3A
+CHARMAP "M",$2B
+CHARMAP "N",$3B
+CHARMAP "O",$2C
+CHARMAP "P",$3C
+CHARMAP "Q",$2D
+CHARMAP "R",$3D
+CHARMAP "S",$2E
+CHARMAP "T",$3E
+CHARMAP "U",$2F
+CHARMAP "V",$3F
+CHARMAP "W",$48
+CHARMAP "X",$58
+CHARMAP "Y",$49
+CHARMAP "Z",$59
+CHARMAP ".",$4A
+CHARMAP "!",$5A
+CHARMAP "'",$4B
+CHARMAP "$",$5B
+CHARMAP " ",$6E
+CHARMAP ",",$70
+
+if Version == VERSION_JP
+CHARMAP "/",$8E
+CHARMAP ".,",$8F
+else
+  CHARMAP "/",$71
+  CHARMAP ".,",$72
+endc
+
+CHARMAP "?",$73
+CHARMAP "-",$79
+CHARMAP "©",$FD                                             ;tangent, but RGBASM has a better CHARMAP implementation than CC65. I can map copyright symbol without trouble!
+
+;kanji is not used at the title screen, but is used in newspaper, which also uses this charmap
+CHARMAP "ア",$00
+CHARMAP "イ",$01
+CHARMAP "ウ",$02
+CHARMAP "エ",$03
+CHARMAP "オ",$04
+CHARMAP "カ",$05
+CHARMAP "キ",$06
+CHARMAP "ク",$07
+CHARMAP "ケ",$10
+CHARMAP "コ",$11
+CHARMAP "サ",$12
+CHARMAP "シ",$13
+CHARMAP "ス",$14
+CHARMAP "セ",$15
+CHARMAP "ソ",$16
+CHARMAP "タ",$17
+CHARMAP "チ",$20
+CHARMAP "ツ",$21
+CHARMAP "テ",$22
+CHARMAP "ト",$23
+CHARMAP "ナ",$24
+CHARMAP "ニ",$25
+CHARMAP "ヌ",$26
+CHARMAP "ネ",$27
+CHARMAP "ノ",$30
+CHARMAP "ハ",$31
+CHARMAP "ヒ",$32
+CHARMAP "フ",$33
+CHARMAP "ヘ",$34
+CHARMAP "ホ",$35
+CHARMAP "マ",$36
+CHARMAP "ミ",$37
+CHARMAP "ム",$40
+CHARMAP "メ",$41
+CHARMAP "モ",$42
+CHARMAP "ヤ",$43
+CHARMAP "ユ",$44
+CHARMAP "ヨ",$45
+CHARMAP "ワ",$46
+CHARMAP "ン",$47
+CHARMAP "ラ",$50
+CHARMAP "リ",$51
+CHARMAP "ル",$52
+CHARMAP "レ",$53
+CHARMAP "ロ",$54
+CHARMAP "ﾞ",$55
+CHARMAP "ャ",$56
+CHARMAP "ュ",$57
+CHARMAP "ョ",$60
+CHARMAP "ッ",$61
+CHARMAP "゜",$62
+CHARMAP "ィ",$63
+CHARMAP "ェ",$70
+CHARMAP "ォ",$71
+CHARMAP "ヲ",$72

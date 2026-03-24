@@ -1,8 +1,9 @@
+;PRG ROM $8000-$BFFF
 SECTION "bank 2", ROMX, BANK[2]
 
 POINTERS_02_4000:
 dw Layout_TitleScreen_02_6198
-dw Layout_StatusBar_62BD
+dw Layout_StatusBar_02_62BD
 dw Layout_LandSelectMonitor_02_6307
 dw Layout_LandSelectStrings_02_63EF
 dw Layout_LandClearStrings_02_6458
@@ -18,8 +19,8 @@ dw Graphics_BossSprites2_02_74F0
 dw Graphics_BossSprites3_02_78A3
 dw Graphics_MonitorAndEndingChest_02_7C68 
 dw Layout_ClearMonitorStrings_02_63CE
-dw DATA_02_6554
-dw DATA_02_6465
+dw Layout_DuckPressText_02_6554
+dw Layout_CountMoney_6465                                   ;land not clear when used Launchpad's help
 
 SetLevelMusic_JMP_02_4026:
 JP SetLevelMusic_02_6165
@@ -205,7 +206,7 @@ dw DATA_02_5E15
 dw DATA_02_5E25
 dw DATA_02_5E33
 dw DATA_02_5E3F
-dw DATA_02_5E8F                                             ;unused pointer
+dw DATA_02_5E8F                                             ;unused pointer (duplicate)
 dw DATA_02_5E8F
 dw DATA_02_5EC3
 dw DATA_02_5ED7
@@ -221,13 +222,13 @@ dw DATA_02_5FB5                                             ;\unused pointers (d
 dw DATA_02_5FB5                                             ;|
 dw DATA_02_5FB5                                             ;|
 dw DATA_02_5FB5                                             ;/
-dw DATA_02_5FB5
-dw UNUSED_02_5FFD                                           ;an unused sfx?
+dw DATA_02_5FB5                                             ;
+dw DATA_02_5FFD                                             ;timer ding (running out)
 dw DATA_02_6025
 
 CODE_02_4161:
 AND $3F
-CP $22
+CP SFX_ItemJingle+1                                         ;sfx past the last one are invalid, clear queue
 JR NC, UNUSED_02_4113
 
 LDH [$FFAB], A
@@ -255,7 +256,6 @@ LD [HL+], A
 DEC B
 JR NZ, CODE_02_4182
 JR CODE_02_41B0
-
 
 CODE_02_4188:
 LD HL, $FFFB
@@ -581,7 +581,7 @@ dw DATA_02_5B9F
 dw DATA_02_5BF6
 dw DATA_02_5C57
 
-DATA_02_4345:
+InitialWavePattern_02_4345:
 db $01,$23,$45,$67,$89,$AB,$CD,$EF
 db $ED,$CB,$A9,$87,$65,$43,$21,$00
 
@@ -590,6 +590,7 @@ LD A, B
 AND $3F
 CP $0C                                          ;checks for specific music which is unused?
 JP NC, UNUSED_02_4119
+
 LDH [CurrentMusic], A
 LD C, A
 LD HL, $FFAC
@@ -609,27 +610,31 @@ LD L, E
 LD A, [HL+]
 LDH [$FFAD], A
 LDH [$FFAE], A
+
 LD A, [HL+]
 LDH [$FFAF], A
+
 LD DE, $FFB0
 LD B, $0A
 
-CODE_02_437F:
+LOOP_02_437F:
 LD A, [HL+]
 LD [DE], A
 INC DE
 DEC B
-JR NZ, CODE_02_437F
-LD HL, DATA_02_4345
-LD DE, $FF30
-LD B, $10
+JR NZ, LOOP_02_437F
 
-CODE_02_438D:
-LD A, [HL+]
-LD [DE], A
-INC DE
-DEC B
-JR NZ, CODE_02_438D
+LD HL, InitialWavePattern_02_4345                           ;
+LD DE, APU_WavePattern                                      ;
+LD B, $10                                                   ;
+
+LOOP_02_438D:
+LD A, [HL+]                                                 ;copy wave pattern table
+LD [DE], A                                                  ;
+INC DE                                                      ;
+DEC B                                                       ;
+JR NZ, LOOP_02_438D                                         ;
+
 XOR A
 LDH [SFXQueue], A
 JP InitSoundRegisters_02_4057
@@ -2071,8 +2076,7 @@ db $04,$01,$0C,$87,$58,$00,$04,$01
 db $0F,$87,$58,$00,$04,$01,$12,$87
 db $58,$00,$04,$01,$15,$87,$58,$06
 
-;a completely unused sound effect?
-UNUSED_02_5FFD:
+DATA_02_5FFD:
 db $02,$00,$04,$02,$80,$03,$F7,$87
 db $C1,$00,$04,$03,$97,$87,$C1,$00
 db $04,$03,$37,$87,$C1,$00,$04,$03
@@ -2122,10 +2126,10 @@ LD A, [HL+]                                                 ;
 LD [CursorXPos], A                                          ;x-position, which is one and only in this game.
 
 LDH A, [JoypadInputPress]                                   ;check if pressed up
-BitA JoypadInput_Up                                         ;
+BitTest JoypadInput_Up, A                                   ;
 JR Z, CODE_02_611A                                          ;
 
-LD A, $19
+LD A, SFX_CursorMove                                        ;
 LDH [SFXQueue], A                                           ;cursor move SFX
 
 CODE_02_610D:
@@ -2146,7 +2150,7 @@ CODE_02_611A:
 AND JoypadInput_Down|JoypadInput_Select                     ;check if pressed down or SELECT
 JR Z, CODE_02_6130
 
-LD A, $19
+LD A, SFX_CursorMove                                        ;
 LDH [SFXQueue], A                                           ;cursor SFX
 
 CODE_02_6122:
@@ -2219,15 +2223,15 @@ db Music_Moon
 db Music_Transylvania                                       ;dracula duck manor
 
 SetLevelMusic_02_6165:
-LDH A, [CurrentMusic]
-AND A
-RET NZ
+LDH A, [CurrentMusic]                                       ;
+AND A                                                       ;
+RET NZ                                                      ;if already playing some music, return
 
-LD HL, PerLevelMusic_02_615F
-LD A, [CurrentLand]
-RST $20
+LD HL, PerLevelMusic_02_615F                                ;
+LD A, [CurrentLand]                                         ;
+RST $20                                                     ;
 LDH [SFXQueue], A                                           ;queue music
-RET
+RET                                                         ;
 
 ;used to queue sound and music.
 ;input B - sound we're about to queue
@@ -2263,528 +2267,48 @@ CP C                                                        ;
 JR NZ, CODE_02_618B                                         ;
 RET                                                         ;nothing happens
 
-;RLE. format:
-;[command/tranfer count], [data array]
-;first byte is a command or amount of bytes to transfer.
-;$00 - terminator command
-;otherwise, it's a transfer count value. if bit 7 is enabled, repeat the next byte X-$80 times
-;after which follows the data array. either a single byte in case of a loop, or multiple, depending on how many to transfer.
-
 SETCHARMAP TitleScreen
-Layout_TitleScreen_02_6198:
-db $98,$00
-db $06
-db $6E,$6E,$6E,$81,$82,$83
-
-db $98,$20
-db $06
-db $6E,$6E,$6E,$91,$92,$93
-
-db $98,$40
-db $10
-db $6E,$6E,$A0,$A1,$A2,$A3,$A4,$6E
-db $6E,$A7,$A8,$A9,$AA,$AB,$AC,$6E
-
-db $98,$60
-db $14
-db $6E,$6E,$B0,$B1,$B2,$B3,$B4,$6E
-db $6E,$B7,$B8,$B9,$BA,$BB,$BC,$BD
-db $BE,$BF,$94,$6E
-
-db $98,$80
-db $14
-db $6E,$6E,$C0,$C1,$C2,$C3,$C4,$C5
-db $C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD
-db $CE,$CF,$85,$6E
-
-db $98,$A0
-db $12
-db $6E,$80,$D0,$D1,$D2,$D3,$D4,$D5
-db $D6,$D7,$D8,$D9,$DA,$DB,$DC,$DD
-db $DE,$DF
-
-db $98,$C0
-db $12
-db $6E,$90,$E0,$E1,$E2,$E3,$E4,$E5
-db $E6,$E7,$E8,$E9,$EA,$EB,$EC,$ED
-db $EE,$EF
-
-db $98,$E0
-db $0C
-db $6E,$84,$F0,$F1,$F2,$F3,$F4,$F5
-db $F6,$F7,$F8,$F9
-
-;difficulty options
-db $99,$07
-db $04
-db "EASY"
-
-db $99,$27
-db $06
-db "NORMAL"
-
-db $99,$47
-db $09
-db "DIFFICULT"
-
-;copyright text starts here
-db $99,$81
-db $11
-db "© THE WALT DISNEY"
-
-db $99,$A1
-db $12
-db "COMPANY / PRODUCED"
-
-db $99,$C1
-db $12
-db "BY CAPCOM CO.,LTD./"
-
-db $99,$E1
-db $12
-db "CAPCOM U.S.A..,INC."
-
-db $9A,$00
-db $14
-db "LICENSED BY NINTENDO"
-
-db $9A,$23
-db $0F
-db "OF AMERICA INC."
-
-db $00
-
+if Version == VERSION_USA
+  include "Data/Tilemaps/TitleScreenUSA.asm"
+elif Version == VERSION_EU
+  include "Data/Tilemaps/TitleScreenEU.asm"
+else
+  include "Data/Tilemaps/TitleScreenJP.asm"
+endc
 
 SETCHARMAP General
-Layout_StatusBar_62BD:
-db $9C,$00
-db $01
-db $4D
-
-db $9C,$13
-db $01
-db $4F
-
-db $9C,$20
-db $01
-db $68
-
-db $9C,$33
-db $01
-db $78
-
-;HP/TIME line
-db $9C,$40
-db $14
-db $68
-db "HP ",$4C,$4C,$4C
-db "   "                                                    ;space between time and HP
-db "TIME 000 "                                              ;shows 000 time by default
-db $78
-
-db $9C,$60
-db $01
-db $5D
-
-db $9C,$61
-db $92
-db $5E
-
-db $9C,$73
-db $01
-db $5F
-
-db $9C,$02
-db $08
-db "TOTAL  $"
-
-db $9C,$22
-db $08
-db "P. 0"                                                   ;zero lives by default (naturally gets replaced later)
-db "   "                                                    ;space between lives and current dollar count
-db "$"
-
-db $00
-
-;the general layout of land select/land beaten, etc.
-Layout_LandSelectMonitor_02_6307:
-db $98,$22
-db $04
-db $20,$21,$22,$23
-
-db $98,$2E
-db $04
-db $20,$21,$22,$23
-
-db $98,$42
-db $10
-db $16,$00,$00,$17,$32,$32,$32,$32
-db $32,$32,$32,$32,$16,$00,$00,$17
-
-
-db $98,$62
-db $10
-db $31,$00,$00,$30,$32,$32,$32,$32
-db $32,$32,$32,$32,$31,$00,$00,$30
-
-db $98,$82
-db $04
-db $24,$25,$26,$27
-
-db $98,$8E
-db $04
-db $24,$25,$26,$27
-
-db $98,$A3
-db $02
-db $33,$34
-
-db $98,$AF
-db $02
-db $33,$34
-
-db $98,$C1
-db $12
-db $01,$14,$14,$14,$02,$03,$14,$14
-db $02,$03,$14,$14,$02,$03,$14,$14
-db $14,$13
-
-db $98,$E1
-db $01
-db $12
-
-db $98,$F2
-db $01
-db $15
-
-db $99,$01
-db $01
-db $04
-
-db $99,$12
-db $01
-db $05
-
-db $99,$21
-db $01
-db $12
-
-db $99,$32
-db $01
-db $15
-
-db $99,$41
-db $01
-db $04
-
-db $99,$52
-db $01
-db $05
-
-db $99,$61
-db $01
-db $12
-
-db $99,$72
-db $01
-db $15
-
-db $99,$81
-db $01
-db $04
-
-db $99,$92
-db $01
-db $05
-
-db $99,$A1
-db $01
-db $12
-
-db $99,$B2
-db $01
-db $15
-
-db $99,$C1
-db $01
-db $04
-
-db $99,$D2
-db $01
-db $05
-
-db $99,$E1
-db $01
-db $12
-
-db $99,$F2
-db $01
-db $15
-
-db $9A,$01
-db $01
-db $12
-
-db $9A,$12
-db $01
-db $15
-
-db $9A,$21
-db $12
-db $06,$14,$10,$11,$14,$14,$10,$11
-db $14,$14,$10,$11,$14,$14,$10,$11
-db $14,$07
-
-db $00
-
-Layout_ClearMonitorStrings_02_63CE:
-db $99,$04
-db $8D
-db $6E
-
-db $99,$24
-db $8D
-db $6E
-
-db $99,$44
-db $8D
-db $6E
-
-db $99,$64
-db $8D
-db $6E
-
-db $99,$84
-db $8D
-db $6E
-
-db $99,$A4
-db $8D
-db $6E
-
-db $99,$C4
-db $8D
-db $6E
-
-db $99,$E4
-db $8D
-db $6E
-
-db StripeImageWriteCommand_Stop
-
-Layout_LandSelectStrings_02_63EF:
-db $99,$04
-db $0D
-db "LAND  SELECT "
-
-db $99,$24
-db $8D
-db $6E
-
-db $99,$44
-db $0D
-db "THE AMAZON   "
-
-db $99,$64
-db $0D
-db "TRANSYLVANIA "
-
-db $99,$84
-db $0D
-db "AFRICAN MINES"
-
-db $99,$A4
-db $0D
-db "THE HIMALAYAS"
-
-db $99,$C4
-db $0D
-db "THE MOON     "
-
-db $99,$E4
-db $8D
-db $6E
-
-db StripeImageWriteCommand_Stop
-
-;win screen text
-Layout_LandClearStrings_02_6458:
-db $99,$25
-db 10
-db "LAND CLEAR"
-
-DATA_02_6465:
-db $99,$64
-db 11
-db "TOTAL MONEY"
-
-db $99,$84
-db 1
-db "$"
-
-db $99,$C4
-db 11
-db "LAND  MONEY"
-
-db $99,$E4
-db 1
-db "$"
-
-db StripeImageWriteCommand_Stop
-
-;level name pointers! these are used for after clearing the level. stage select strings are separate.
-LandClearLandNames_02_648A:
-dw LandName_TheAmazon_02_6494
-dw LandName_Transylvania_02_64A2
-dw LandName_AfricanMines_02_64B2
-dw LandName_TheHimalayas_02_64C3
-dw LandName_TheMoon_02_64D4
-
-LandName_TheAmazon_02_6494:
-db $99,$04
-db 10
-db "THE AMAZON"
-
-db StripeImageWriteCommand_Stop
-
-LandName_Transylvania_02_64A2:
-db $99,$04
-db 12
-db "TRANSYLVANIA"
-
-db StripeImageWriteCommand_Stop
-
-LandName_AfricanMines_02_64B2:
-db $99,$04
-db $0D
-db "AFRICAN MINES"
-
-db StripeImageWriteCommand_Stop
-
-LandName_TheHimalayas_02_64C3:
-db $99,$04
-db $0D
-db "THE HIMALAYAS"
-db StripeImageWriteCommand_Stop
-
-LandName_TheMoon_02_64D4:
-db $99,$04
-db 8
-db "THE MOON"
-
-db StripeImageWriteCommand_Stop
-
-;beat all stages...
-Layout_AllLandClearStrings_02_64E0:
-db $99,$04
-db $08
-db "ALL LAND"
-
-db $99,$44
-db $08
-db "CLEAR!!!"
-
-db $00
-
-;message from Glomgold
-Layout_GlomgoldMessage_02_64F7:
-db $99,$04
-db $09
-db "HA HA ..."
-
-db $99,$24
-db $0B
-db "IF YOU WANT"
-
-db $99,$44
-db $0B
-db "TO GET BACK"
-
-db $99,$64
-db $03
-db "THE"
-
-db $99,$84
-db $09
-db "TREASURES"
-
-db $99,$A4
-db $07
-db "COME TO"
-
-db $99,$C4
-db $0C
-db "DRACURA DUCK"                                           ;[sic]
-
-db $99,$E4
-db $06
-db "MANOR."
-
-db $00
-
-;newspaper
-DATA_02_6554:
-db $98,$25
-db $0A
-db "DUCK PRESS"
-
-db $98,$61
-db $0F
-db "SCROOGE REMAINS"
-
-db $98,$81
-db $10
-db "THE RICHEST DUCK"
-
-db $98,$A1
-db $09
-db "IN WORLD."                                              ;surely you had space for THE
-
-db $98,$E7
-db $0C
-db "DARING EXPL-"
-
-db $99,$07
-db $0C
-db "ORERSCROOGE "                                           ;someone made an oopsie and added a space at the end of the line, not to separate EXPLORER and SCROOGE
-
-db $99,$27
-db $0A
-db "MCDUCK HAS"
-
-db $99,$47
-db $09
-db "FOUND THE"
-
-db $99,$67
-db $0C
-db "FIVE LEGEND-"
-
-db $99,$87
-db $0C
-db "ARY TREASUR-"
-
-db $99,$A7
-db $09
-db "ES MAKING"
-
-db $99,$C7
-db $0C
-db "HIM THE RIC-"
-
-db $99,$E7
-db $0C
-db "HEST DUCK IN"
-
-db $9A,$07
-db $0A
-db "THE WORLD."                                             ;they got THE this time!
-
-db $00
+include "Data/Tilemaps/StatusBar.asm"
+include "Data/Tilemaps/LandSelectMonitor.asm"
+include "Data/Tilemaps/ClearMonitorStrings.asm"
+
+if Version != VERSION_JP
+  include "Data/Tilemaps/LandSelectStrings.asm"
+  include "Data/Tilemaps/LandClearStrings.asm"
+  include "Data/Tilemaps/LandNamesForClear.asm"
+  include "Data/Tilemaps/AllLandClear.asm"
+
+  include "Data/Tilemaps/GlomgoldMessage.asm"
+
+  SETCHARMAP TitleScreen                                    ;doesn't really matter for english versions...
+  include "Data/Tilemaps/DuckPressText.asm"
+else
+  include "Data/Tilemaps/LandSelectStringsJP.asm"
+  include "Data/Tilemaps/LandClearStringsJP.asm"
+  include "Data/Tilemaps/LandNamesForClearJP.asm"
+  include "Data/Tilemaps/AllLandClearJP.asm"
+
+  include "Data/Tilemaps/GlomgoldMessageJP.asm"
+  
+  SETCHARMAP TitleScreen
+  include "Data/Tilemaps/DuckPressTextJP.asm"
+endc
 
 ;unused graphics data. it's just blank space though.
+;not present in the Japanese version. the unused pointer now directs to japanese font.
 Graphics_Blank_02_661F:
-incbin "Data/Graphics/Blank.bin"
+if Version != VERSION_JP
+  incbin "Data/Graphics/Blank.bin"
+endc
 
 ;Katakana font + a few misc tiles (and yes, this font is in all versions of DuckTales, not just in japanese one)
 Graphics_JapaneseFont_02_6631:
@@ -2808,3 +2332,52 @@ incbin "Data/Graphics/BossGFX3.bin"
 
 Graphics_MonitorAndEndingChest_02_7C68:
 incbin "Data/Graphics/MonitorAndEndingChest.bin"
+
+;garbage padding? european version ONLY
+if Version == VERSION_EU
+  db $FF,$EF,$06,$A0,$30,$63,$41,$D9
+  db $FE,$0B,$5D,$55,$55,$DD,$57,$55
+  db $51,$D4,$81,$00,$82,$00,$28,$0A
+  db $82,$0A,$FF,$FD,$FF,$FF,$FF,$BE
+  db $FF,$FB,$00,$18,$90,$2C,$97,$8C
+  db $10,$5C,$57,$55,$15,$75,$5D,$5D
+  db $55,$57,$88,$02,$08,$80,$88,$A0
+  db $00,$02,$FF,$FF,$FF,$FF,$FF,$FF
+  db $FF,$FE,$8C,$44,$C0,$40,$28,$08
+  db $10,$23,$55,$65,$55,$55,$D7,$55
+  db $57,$54
+elif Version == VERSION_JP
+  ds 202, $00
+  
+;for some reason has the first 64 bytes of data from the next bank at the end of this bank. copy-paste error? compiler acting up?
+dw Graphics_PlayerSprites1_03_4320
+dw Graphics_PlayerSprites2_03_46CF
+dw Graphics_AmazonSprites1_03_4AA3
+dw Graphics_AmazonSprites2_03_4E7B
+dw Graphics_SupportingCharacters_03_525D
+dw Graphics_AfricanMinesSprites_03_55F6
+dw Graphics_HimalayasAndTransylvaniaSprites2_03_59CD
+dw Graphics_HimalayasSprites_03_5D97
+dw Graphics_AmazonTileset_03_6151
+dw Graphics_HimalayasTileset_03_6525
+dw Graphics_TransylvaniaTileset_03_68BE
+dw Graphics_AfricanMinesTileset_03_6C9A
+dw Graphics_MoonTileset_03_704C
+dw Graphics_EnglishFontAndStatusBar_03_7424
+dw Graphics_TitleScreen_03_7768
+dw Graphics_Ending_03_7AA3
+dw Layout_EndingChest_03_7DE9                               ;stripe data starts here
+dw Layout_EndingNephewsBorder_03_7E30
+dw Layout_EndingScrooge_03_7E61
+dw Message_EndingNephews_03_7ED3
+dw Message_EndingScroogeMessage_03_7F42
+
+JP LoadEndingMessage_03_7FB1
+
+JP DrawChestScreenFloor_03_7E1C
+
+db $08,$08,$04,$6E,$12,$13,$12,$13
+db $12,$13,$10,$11,$08,$04,$7F,$06
+else
+  ds 13, $FF
+endc

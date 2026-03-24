@@ -1,9 +1,10 @@
 Labels follow this format:
 
-[TAG/NAME]_[BANK]_ADDRESS
+[TAG/NAME]_[VERSION]_[BANK]_ADDRESS
 (examples: LOOP_00_C000, ThisIsAVeryDescriptiveLabelName_01_8934)
 Tag is used for generic labels that don't have a unique name.
 Bank is the program bank the code is located in.
+Version indicates a specific version of the game. If there's no version, assume that the label is for the USA version of the game (note that the addresses differ between versions, so the USA labels won't match Japanese ones).
 
 Tags:
 CODE - marks a block of code

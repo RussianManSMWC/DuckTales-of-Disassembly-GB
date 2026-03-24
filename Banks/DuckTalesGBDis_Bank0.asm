@@ -1,4 +1,5 @@
 ;A disassembly of Duck Tales for the Game Boy
+;PRG ROM $0000-$3FFF
 
 ;used to execute code pointers right after the the jump
 SECTION "rst 00", ROM0[$0]
@@ -137,28 +138,17 @@ JP RESET_00_0150
 SECTION "Header",  ROM0 [$104]
 incbin "NintendoLogo.bin"
 
-db "DUCK TALES",$00,$00,$00,$00,$00                         ;title
-db $00                                                      ;Game Boy game (not game boy color only or game boy color enhanced)
-db $00,$00                                                  ;new license (this game was made before that was a thing)
-db $00                                                      ;Super Game Boy flag (made before Super Game Boy, so no extra features)
-db $01		                                    ;Cart type = ROM. nothing fancy.
-db $01		                                    ;ROM size = 64KB
-db $00                                                      ;extra RAM = none
-db $01                                                      ;region = non-japan
-db $08                                                      ;old licensee = Capcom
-db $00                                                      ;version 1.0 so to speak
-db $1C                                                      ;header checksum
-db $A3,$DD                                                  ;global checksum
+include "Header.asm"
 
-include "CharacterSet.asm"
+include "Defines/CharacterSet.asm"
 
 SECTION "Main", ROM0 [$150]
 RESET_00_0150:
 DI                                                          ;disable interrupt
-CALL CODE_00_3737
+CALL DisableLCD_00_3737
 
 LD SP, $DFFF
-CALL CODE_00_3796
+CALL StoreOAMUploadCodeToRAM_00_3796
 
 LD HL, $C000
 LD BC, $1FF0
@@ -197,7 +187,7 @@ PUSH BC
 PUSH DE
 PUSH HL
 LDH A, [Reg_LCDControlAndRender]                            ;if we're not even showing anything...
-BitA LCDControlEnable                                       ;
+BitTest LCDControlEnable, A                                 ;
 JR Z, CODE_00_020F                                          ;skip buffer stuff
 
 CALL OAMUploadCode                                          ;upload OAM
@@ -232,7 +222,7 @@ JR Z, CODE_00_01CB                                          ;
 LD A, $20                                                   ;move camera to the message box (it's drawn below status bar to give an illusion of it replacing the status bar. clever!
 
 CODE_00_01CB:
-LDH [Register_CameraYPosition], A
+LDH [Register_CameraYPosition], A                           ;
 
 LD A, [$C631]
 LD [CameraPositionX], A
@@ -240,9 +230,9 @@ LD [CameraPositionX], A
 LD A, [$C633]
 LD [CameraPositionY], A
 
-LD A, [$DF71]
-AND A
-JR Z, CODE_00_020F
+LD A, [ScreenShakeTimer]                                    ;check if screen shaking is enabled
+AND A                                                       ;
+JR Z, CODE_00_020F                                          ;
 
 LD A, [FrameCounter]
 BIT 3, A
@@ -252,12 +242,12 @@ LD HL, CurrentLand                                          ;check if we are in.
 BIT 0, [HL]
 JR NZ, CODE_00_01F4
 
-LD A, $75
-LD [CameraPositionY], A
-JR CODE_00_0204
+LD A, $75                                                   ;this will adjust the camera position to make it seem like the screen is shaking
+LD [CameraPositionY], A                                     ;
+JR CODE_00_0204                                             ;
 
 CODE_00_01F4:
-BIT 2, A
+BIT 2, A                                                    ;check if in Moon...?
 JR NZ, CODE_00_01FF
 
 LD A, $DC
@@ -269,15 +259,34 @@ LD A, $E4
 LD [CameraPositionX], A
 
 CODE_00_0204:
-LD A, [FrameCounter]
-AND $07
-JR NZ, CODE_00_020F
+LD A, [FrameCounter]                                        ;
+AND $07                                                     ;
+JR NZ, CODE_00_020F                                         ;
 
-LD A, $0E
-LDH [SFXQueue], A
+LD A, SFX_Quake                                             ;
+LDH [SFXQueue], A                                           ;
 
 CODE_00_020F:
 CALL ReadJoypadInputs_00_3765
+
+;japan exclusive code!
+if Version == VERSION_JP
+  LDH A, [JoypadInputHolding]                               ;check if holding...
+  BitTest JoypadInput_Select, A                             ;select
+  JR Z, CODE_JP_00_0228                                     ;move on if not
+  
+  LDH A, [JoypadInputPress]                                 ;check if pressed...
+  BitTest JoypadInput_Start, A                              ;start
+  JR Z, CODE_JP_00_0228                                     ;move on if not
+  
+  LDH A, [Reg_LCDControlAndRender]                          ;make sure render is enabled
+  BitTest LCDControlEnable, A                               ;
+  CALL Z, EnableLCDAndRender_00_3750                        ;
+
+  JP RESET_00_0150                                          ;RESET
+
+CODE_JP_00_0228:
+endc
 
 LD A, 2
 LD [MBC1Bank], A                                            ;set bank to 2
@@ -338,7 +347,7 @@ RETI
 ;transition into game mode
 CODE_00_0257:
 LD SP, $DFFF                                                ;stack
-CALL CODE_00_3737
+CALL DisableLCD_00_3737
 CALL ClearTilemap_00_37E8
 
 SetProgramBank1
@@ -354,29 +363,50 @@ dw CODE_00_02B6                                             ;level select (maybe
 dw CODE_00_0620                                             ;gameplay (and ending cutscenes)
 dw CODE_00_0348                                             ;unused pointer
 
+if Version == VERSION_JP
+  include "Data/SpecialScreenGraphicBankConfigurations.asm" ;graphic bank configurations are moved to bank 0 in japanese version
+endc
+
 ;title screen
 TitleScreenCode_00_0272:
 LD DE, POINTERS_02_4000+(0*2)
 CALL ProcessStripeImageFromBank2_00_032A                    ;draw title screen
 
-LD HL, DATA_01_7A97                                         ;load title screen graphics
+LD HL, TitleScreenGraphicBanks_01_7A97                      ;load title screen graphics
 CALL CODE_00_38A7
 
 CALL TitleScreenInit_01_7C5F
 
-LD A, $00
-LD [FrameCounter], A
+if Version != VERSION_JP
+  LD A, $00
+  LD [FrameCounter], A
+endc
 
 LOOP_00_0286:
-CALL CODE_00_029F
+if Version == VERSION_JP
+  ;japanese version essentially undoes the ExecuteTitleScreenCode_00_029F call, since it realistically is only needed once (no frame counter check helps)
+  CALL WaitFrame_00_075A
+  CALL CODE_00_0FE5
 
-LD A, [FrameCounter]
-CP $40                                                      ;wait for 64 frames before the game can be started
-JR C, LOOP_00_0286
+  SetProgramBank1
+  CALL DisplayCursorSprite_01_7DFF                          ;the priority has the cursor display at the wrong position for a single frame
+
+  LD HL, TitleScreen_CursorData_00_0299
+  LD A, [SelectedDifficulty]
+  CALL HandleCursorPrep_00_0789                             ;handle changing between difficulty options
+  LD [SelectedDifficulty], A
+  JR NC, LOOP_00_0286
+else
+  CALL ExecuteTitleScreenCode_00_029F
+
+  LD A, [FrameCounter]
+  CP 64                                                     ;wait for 64 frames before the game can be started
+  JR C, LOOP_00_0286
 
 LOOP_00_0290:
-CALL CODE_00_029F
-JR NC, LOOP_00_0290                                         ;check if pressed start
+  CALL ExecuteTitleScreenCode_00_029F
+  JR NC, LOOP_00_0290                                       ;check if pressed start
+endc
 
 SetProgramBank1                                             ;
 JP StartGameFromTitleScreen_01_7C87                         ;will change game mode to land select and a few other prep things
@@ -388,24 +418,31 @@ JP StartGameFromTitleScreen_01_7C87                         ;will change game mo
 TitleScreen_CursorData_00_0299:
 db $03,$00                                                  ;example: 3 options on a single column
 db $28                                                      ;since there's only 1 column, the x-position is consistent
-db $40,$48,$50                                              ;three different y-positions based on cursor selection
+
+if Version == VERSION_EU
+  db $50,$58,$60                                            ;european version lowers cursor's y-position to match lowered difficulty string positions
+else
+  db $40,$48,$50                                            ;three different y-positions based on cursor selection
+endc
 
 ;title screen code
-CODE_00_029F:
-CALL WaitFrame_00_075A
-CALL CODE_00_0FE5
+if Version != VERSION_JP
+ExecuteTitleScreenCode_00_029F:
+  CALL WaitFrame_00_075A
+  CALL CODE_00_0FE5
 
-SetProgramBank1
-CALL DisplayCursorSprite_01_7DFF                            ;the priority has the cursor display at the wrong position for a single frame
+  SetProgramBank1
+  CALL DisplayCursorSprite_01_7DFF                          ;the priority has the cursor display at the wrong position for a single frame
 
-LD HL, TitleScreen_CursorData_00_0299
-LD A, [SelectedDifficulty]
-CALL HandleCursorPrep_00_0789                               ;handle changing between difficulty options
-LD [SelectedDifficulty], A
-RET
+  LD HL, TitleScreen_CursorData_00_0299
+  LD A, [SelectedDifficulty]
+  CALL HandleCursorPrep_00_0789                             ;handle changing between difficulty options
+  LD [SelectedDifficulty], A
+  RET
+endc
 
 CODE_00_02B6:
-LD HL, DATA_01_7A9D
+LD HL, LandSelectGraphicBanks_01_7A9D
 CALL CODE_00_38A7
 
 LD HL, DATA_01_7AB7
@@ -429,18 +466,39 @@ CALL ProcessStripeImageFromBank2_00_032A
 XOR A
 LD [CurrentLand], A
 
-LD A, $00                                                   ;??? A is already 0!
-LD [FrameCounter], A
+if Version != VERSION_JP
+  LD A, $00                                                 ;??? A is already 0!
+  LD [FrameCounter], A
+endc
 
 LOOP_00_02E7:
-CALL CODE_00_0312
-LD A, [FrameCounter]
-CP $40
-JR C, LOOP_00_02E7
+;same deal as with title screen, replace CALL with its code
+if Version == VERSION_JP
+  CALL WaitFrame_00_075A
 
-CODE_00_02F1:
-CALL CODE_00_0312
-JR NC, CODE_00_02F1
+  SetProgramBank1
+  CALL CODE_01_7DD0
+  CALL DisplayCursorSprite_01_7DFF
+
+  LD HL, DATA_00_030A
+  LD A, [CurrentLand]
+  CALL HandleCursorPrep_00_0789
+
+  LD HL, CurrentLand
+  LD [HL+], A
+  JR NC, LOOP_00_02E7
+else
+  CALL ExecuteLandSelectCode_00_0312
+
+  LD A, [FrameCounter]
+  CP 64
+  JR C, LOOP_00_02E7
+
+LOOP_00_02F1:
+  CALL ExecuteLandSelectCode_00_0312
+  JR NC, LOOP_00_02F1
+endc
+
 
 CODE_00_02F6:
 LD HL, MoneyCurrent                                         ;clear current money count
@@ -461,20 +519,22 @@ db $05,$00
 db $18
 db $50,$58,$60,$68,$70
 
-CODE_00_0312:
-CALL WaitFrame_00_075A
+if Version != VERSION_JP
+ExecuteLandSelectCode_00_0312:
+  CALL WaitFrame_00_075A
 
-SetProgramBank1
-CALL CODE_01_7DD0
-CALL DisplayCursorSprite_01_7DFF
+  SetProgramBank1
+  CALL CODE_01_7DD0
+  CALL DisplayCursorSprite_01_7DFF
 
-LD HL, DATA_00_030A
-LD A, [CurrentLand]
-CALL HandleCursorPrep_00_0789
-LD HL, CurrentLand
+  LD HL, DATA_00_030A
+  LD A, [CurrentLand]
+  CALL HandleCursorPrep_00_0789
+  LD HL, CurrentLand
 
-LD [HL+], A
-RET
+  LD [HL+], A
+  RET
+endc
 
 ;get a pointer from bank 2 and process the stripe data from there
 ;input DE - location of said pointer
@@ -515,7 +575,6 @@ LD DE, POINTERS_02_4000+(18*2)
 
 CODE_00_0355:
 CALL ProcessStripeImageFromBank2_00_032A
-
 CALL SetProgramBank2_00_0337                                ;set program bank to 2 (remember, bank 1 is set after calling ProcessStripeImageFromBank2)
 
 LD A, [POINTERS_02_4000+(5*2)]                              ;get level names pointer
@@ -524,7 +583,7 @@ LD L, A                                                     ;
 LD A, [POINTERS_02_4000+(5*2)+1]                            ;
 LD H, A                                                     ;
 
-LD A, [CurrentLand]                                               ;current land
+LD A, [CurrentLand]                                         ;current land
 RST $28
 
 LD H, D
@@ -534,7 +593,6 @@ CALL ProcessStripeImage_00_3800                             ;draw the level name
 CALL EnableLCDAndRender_00_3750
 
 SetProgramBank1
-
 CALL CODE_01_7E12
 
 LD HL, LandBeatenFlags
@@ -578,26 +636,26 @@ CALL CODE_00_05F7
 LD DE, POINTERS_02_4000+(7*2)                               ;load message from glomgold
 CALL ProcessStripeImageFromBank2_00_032A
 
-CALL CODE_00_075F
+CALL WaitForAOrBPress_00_075F
 
 LD A, CurrentLand_DraculaDuckManor                          ;get sent to transylvania for a third time
 LD [CurrentLand], A
 JP CODE_00_02F6
 
-CODE_00_03C4:
-LD A, [FrameCounter]
-AND $03
-RET NZ
+PlayMoneyCountingSFX_00_03C4:
+LD A, [FrameCounter]                                        ;
+AND $03                                                     ;
+RET NZ                                                      ;play SFX every 4th frame
 
-LD A, $06
-CALL QueueSoundPrep_00_072B
-RET
+LD A, SFX_ItemCollect                                       ;
+CALL QueueSoundPrep_00_072B                                 ;
+RET                                                         ;
 
 CODE_00_03D0:
 SetProgramBank1
 PUSH DE
 CALL DisableRender_00_3757
-CALL CODE_00_3737
+CALL DisableLCD_00_3737
 POP DE
 LD BC, $0240
 JP CODE_01_7C42
@@ -605,8 +663,9 @@ JP CODE_01_7C42
 CODE_00_03DF:
 LD B, $80
 CALL CODE_00_0455
-CALL CODE_00_3737
+CALL DisableLCD_00_3737
 CALL SetProgramBank2_00_0337
+
 LD BC, $0D02
 CALL CODE_00_38E7
 
@@ -625,33 +684,33 @@ CALL CODE_00_361E
 LD B, $20
 CALL CODE_00_0455
 CALL CODE_00_06EE
-
 CALL CODE_01_7D01
 
 CODE_00_040E:
 CALL CODE_00_044C
 CALL CODE_00_0DC6
+
 LD A, [$C627]
 BIT 7, A
 JR NZ, CODE_00_0428
 BIT 1, A
 JR NZ, CODE_00_043D
 
-LD A, [$C201]                                 ;if the player accidently fell off or climbed down offscreen during the final race...
+LD A, [$C201]                                               ;if the player accidently fell off or climbed down offscreen during the final race...
 CP $98                                                      ;
 JR NC, CODE_00_0438                                         ;fail said race
 
 JR CODE_00_040E
 
 CODE_00_0428:
-XOR A
-LDH [CurrentMusic], A
+XOR A                                                       ;
+LDH [CurrentMusic], A                                       ;
 
-LD A, $21
-CALL QueueSoundPrep_00_072B
+LD A, SFX_ItemJingle                                        ;win!
+CALL QueueSoundPrep_00_072B                                 ;
 
-LD A, $F0
-CALL WaitForVBlank_372E
+LD A, 240                                                   ;wait a while before transition
+CALL WaitForVBlank_372E                                     ;
 JP CODE_00_054F
 
 CODE_00_0438:
@@ -667,7 +726,6 @@ LD [$C627], A
 XOR A
 LD [$C630], A
 JP CODE_00_0257
-
 
 CODE_00_044C:
 CALL WaitFrame_00_075A
@@ -694,6 +752,7 @@ RET NZ
 LD A, [$C627]
 BIT 7, A
 JR NZ, CODE_00_0483
+
 LD A, [FrameCounter]
 AND $3F
 JR NZ, CODE_00_0483
@@ -703,7 +762,7 @@ LD HL, DATA_00_0769+3
 CALL SubstractFrom4ByteCounter_00_395D
 JR NC, CODE_00_0483
 
-CALL CODE_00_16D4
+CALL PlayerStateCode_DeadOrHurt_00_16D4
 
 CODE_00_0483:
 LD A, [FrameCounter]
@@ -789,27 +848,32 @@ CALL CODE_00_085D
 LD A, H
 CP $01
 JR NZ, CODE_00_0526
+
 LD A, [CurrentLand]
 OR L
 JR NZ, CODE_00_050F
+
 LD A, [$CA1D]
 BIT 6, A
 JR Z, CODE_00_0526
+
 LD A, $1E
 CALL CODE_00_07B6
 JR CODE_00_0526
 
 CODE_00_050F:
 LD A, [CurrentLand]
-CP $04
+CP CurrentLand_Moon
 JR NZ, CODE_00_0526
 
 LD A, L
 AND A
 JR NZ, CODE_00_0526
+
 LD A, [$CA1D]
 BIT 4, A
 JR NZ, CODE_00_0526
+
 LD A, $19
 CALL CODE_00_07B6
 
@@ -853,20 +917,22 @@ LD DE, POINTERS_03_4000+(16*2)
 CALL ProcessStripeImageFromBank3_00_033F
 
 SetBankAndBackup 3
-CALL CODE_03_402D
+CALL DrawChestScreenFloor_JMP_03_402D
 
-LD HL, DATA_01_7AA3
+LD HL, EndingChestGraphicBanks_01_7AA3
 CALL CODE_00_38A7
 
 CALL EnableLCDAndRender_00_3750
 CALL CODE_01_7D46
+
 LD D, $6E
 CALL CODE_00_03D0
 CALL CODE_00_05F7
+
 LD A, $E1
 LDH [Register_BackgroundPalette], A
 
-LD HL, DATA_01_7AA9
+LD HL, EndingDuckPressGraphcBanks_01_7AA9
 CALL CODE_00_38A7
 
 LD DE, POINTERS_02_4000+(17*2)
@@ -874,7 +940,8 @@ CALL ProcessStripeImageFromBank2_00_032A
 
 CALL EnableLCDAndRender_00_3750
 CALL CODE_01_7D84
-CALL CODE_00_075F
+CALL WaitForAOrBPress_00_075F
+
 LD D, $6E
 CALL CODE_00_03D0
 CALL CODE_00_05F7
@@ -885,7 +952,11 @@ LD [CurrentOAMSlot], A
 LD A, $E4
 LDH [Register_BackgroundPalette], A
 
-LD HL, DATA_01_7AAF
+if Version == VERSION_JP
+  LD HL, EndingCharacterPortraitGraphicBanksNephews_JP_00_02A0
+else
+  LD HL, EndingCharacterPortraitGraphicBanks_01_7AAF
+endc
 CALL CODE_00_38A7
 
 CALL EnableLCDAndRender_00_3750
@@ -900,9 +971,9 @@ CALL CODE_01_7DBA
 
 XOR A
 CALL CODE_00_05FF
-CALL CODE_00_075F
-LD HL, Buffer_DataCount
+CALL WaitForAOrBPress_00_075F
 
+LD HL, Buffer_DataCount
 LD BC, $0103
 CALL ClearRAM_00_37E0
 
@@ -910,7 +981,7 @@ LD D, $6E
 CALL CODE_00_03D0
 CALL CODE_00_05F7
 
-LD HL, DATA_01_7AAF
+LD HL, EndingCharacterPortraitGraphicBanks_01_7AAF
 CALL CODE_00_38A7
 CALL EnableLCDAndRender_00_3750
 
@@ -947,7 +1018,7 @@ LD BC, $0028                                                ;clear some message 
 CALL ClearRAM_00_37E0
 
 SetBankAndBackup 3                                          ;set program bank 3
-CALL CODE_03_402A
+CALL LoadEndingMessage_JMP_03_402A                          ;
 JP LOOP_00_3B1A
 
 DATA_00_061C:
@@ -957,6 +1028,7 @@ CODE_00_0620:
 LD HL, $C627
 BIT 0, [HL]
 JR Z, CODE_00_0639
+
 RES 0, [HL]
 LD A, [PlayerLives]
 SUB $01                                                     ;minus one life.
@@ -996,7 +1068,7 @@ LD [$CA01], A
 LD [$CA00], A
 LD [$DF54], A
 LD [Player_InvincibilityTimer], A
-LD [$DF71], A
+LD [ScreenShakeTimer], A
 
 LD A, [PlayerHealthMax]
 LD [PlayerHealth], A
@@ -1006,40 +1078,40 @@ LD DE, $CA0E
 LD BC, $0004
 CALL TransferData_00_37F7
 
-CODE_00_0686:
-LD A, $01
-CALL WaitForVBlank_372E
+LOOP_00_0686:
+LD A, $01                                                   ;
+CALL WaitForVBlank_372E                                     ;
 
-LD HL, $C1FD
-LDH A, [JoypadInputPress]
-BitA JoypadInput_Start
-JR Z, CODE_00_069D
+LD HL, PauseFlag                                            ;
+LDH A, [JoypadInputPress]                                   ;
+BitTest JoypadInput_Start, A                                ;check if player pressed start
+JR Z, CODE_00_069D                                          ;
 
-LD A, [HL]
-XOR $01
-LD [HL], A
+LD A, [HL]                                                  ;
+XOR $01                                                     ;flip paused status
+LD [HL], A                                                  ;
 
-LD A, $06
-CALL QueueSoundPrep_00_072B
+LD A, SFX_ItemCollect                                       ;pause SFX
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_069D:
-BIT 0, [HL]
-JR NZ, CODE_00_0686
+BIT 0, [HL]                                                 ;check if game is paused
+JR NZ, LOOP_00_0686                                         ;wait until player unpauses it
 
 LDH A, [JoypadInputPress]                                   ;check if pressed select
-BitA JoypadInput_Select                                     ;
+BitTest JoypadInput_Select, A                               ;
 JR Z, CODE_00_06BD                                          ;
 
 LD A, [MoneyTotal]                                          ;
 CP $03                                                      ;check if have 3 millions
 JR C, CODE_00_06BD                                          ;
 
-LD DE, MoneyTotal+3
-LD HL, HealthRefillValue_00_0785+3
+LD DE, MoneyTotal+3                                         ;
+LD HL, HealthRefillValue_00_0785+3                          ;
 CALL SubstractFrom4ByteCounter_00_395D                      ;pay 3 million dollars
 
 LD A, [PlayerHealthMax]                                     ;restore player's health.
-LD [PlayerHealth], A
+LD [PlayerHealth], A                                        ;
 
 CODE_00_06BD:
 CALL SetLevelMusicPrep_00_0725
@@ -1053,7 +1125,8 @@ BIT 7, A
 JP NZ, CODE_00_045E
 BIT 0, A
 JR Z, CODE_00_06DE
-LD A, $A0
+
+LD A, 160
 CALL WaitForVBlank_372E
 JP CODE_00_0257
 
@@ -1065,8 +1138,7 @@ LD A, [CurrentMessage]                                      ;check if we should 
 AND A
 CALL NZ, CODE_00_06EE
 
-JP CODE_00_0686
-
+JP LOOP_00_0686
 
 CODE_00_06EE:
 SetProgramBank1
@@ -1107,23 +1179,23 @@ JP SetLevelMusic_JMP_02_4026
 ;i think this is sound effect related
 ;input A - sound effect or music to queue.
 QueueSoundPrep_00_072B:
-PUSH HL
-PUSH BC
+PUSH HL                                                     ;
+PUSH BC                                                     ;
 LD B, A                                                     ;input A move into B for the subroutine
 
 LDH A, [CurrentProgramBank]                                 ;save bank
 PUSH AF                                                     ;
 
-SetBankAndBackup 2
-CALL QueueSound_JMP_02_4032
+SetBankAndBackup 2                                          ;
+CALL QueueSound_JMP_02_4032                                 ;
 
-POP AF
+POP AF                                                      ;
 LD [MBC1Bank], A                                            ;restore bank
-LDH [CurrentProgramBank], A
+LDH [CurrentProgramBank], A                                 ;
 
-POP BC
-POP HL
-RET
+POP BC                                                      ;
+POP HL                                                      ;
+RET                                                         ;
 
 DATA_00_0744:
 db $01,$20,$00,$44,$00,$00,$87,$D3
@@ -1140,14 +1212,14 @@ WaitFrame_00_075A:
 LD A, $01
 JP WaitForVBlank_372E
 
-;Wait until A or B had been pressed. Used for message box,
-CODE_00_075F:
-CALL WaitFrame_00_075A
+;Wait until A or B had been pressed. Used for message box, ending
+WaitForAOrBPress_00_075F:
+CALL WaitFrame_00_075A                                      ;vblank wait
 
-LDH A, [JoypadInputPress]
-AND JoypadInput_A|JoypadInput_B
-JR Z, CODE_00_075F
-RET
+LDH A, [JoypadInputPress]                                   ;
+AND JoypadInput_A|JoypadInput_B                             ;
+JR Z, WaitForAOrBPress_00_075F                              ;loop until either button is pressed
+RET                                                         ;
 
 ;various counter values
 ;first byte - millions and tens millions
@@ -1210,6 +1282,7 @@ LD B, A
 INC HL
 LD A, [HL+]
 LD E, A
+
 LD A, [HL+]
 LD D, A
 
@@ -1233,8 +1306,6 @@ POP DE
 POP BC
 RET
 
-
-
 CODE_00_07D6:
 PUSH DE
 PUSH HL
@@ -1247,13 +1318,14 @@ LD D, H
 LD E, L
 JP CODE_00_09EA
 
-
 CODE_00_07E4:
 PUSH DE
 PUSH HL
+
 LD E, B
 LD A, C
 CALL CODE_00_0AE1
+
 LD A, [HL]
 BIT 3, C
 JR NZ, CODE_00_07F2
@@ -1265,8 +1337,6 @@ POP HL
 POP DE
 RET
 
-
-
 CODE_00_07F7:
 LD A, [$C633]
 LD L, A
@@ -1277,8 +1347,10 @@ AND $F0
 LDH [$FF8D], A
 LD A, [$C632]
 LD H, A
+
 LD A, [$C631]
 LD L, A
+
 LDH A, [$FF8E]
 RST $18
 LD A, L
@@ -1286,8 +1358,6 @@ AND $F0
 LD L, A
 LDH [$FF8E], A
 RET
-
-
 
 CODE_00_0816:
 CALL CODE_00_07F7
@@ -1408,32 +1478,36 @@ CALL CODE_00_0837
 LD DE, $C8D0
 LD B, $08
 
-CODE_00_08C6:
+LOOP_00_08C6:
 LD A, [HL]
 LD [DE], A
 INC DE
 LD A, $0A
 RST $18
 DEC B
-JR NZ, CODE_00_08C6
+JR NZ, LOOP_00_08C6
+
 CALL CODE_00_0EB4
+
 LD HL, $C8D0
 LD DE, $C8D8
 LD B, $08
 
-CODE_00_08DA:
+LOOP_00_08DA:
 CALL CODE_00_0877
 INC HL
 DEC B
-JR NZ, CODE_00_08DA
+JR NZ, LOOP_00_08DA
+
 LDH A, [$FF8F]
 LD D, A
 LDH A, [$FF90]
 LD E, A
+
 LD HL, $C8D0
 LD B, $08
 
-CODE_00_08EC:
+LOOP_00_08EC:
 CALL CODE_00_0956
 INC HL
 LD A, E
@@ -1444,7 +1518,8 @@ INC D
 
 CODE_00_08F7:
 DEC B
-JR NZ, CODE_00_08EC
+JR NZ, LOOP_00_08EC
+
 LD HL, $C8D8
 LD B, $10
 
@@ -1452,6 +1527,7 @@ CODE_00_08FF:
 PUSH BC
 LD B, $02
 CALL DrawStripeImage_00_380F
+
 LDH A, [$FF90]
 ADD A, $20
 LDH [$FF90], A
@@ -1469,15 +1545,17 @@ POP DE
 POP BC
 RET
 
-
+DATA_00_091A:
 db $00,$00,$00,$00,$01,$01,$01,$01
 db $02
 
 ;unknown
 db $02
 
+db $03,$03,$04,$09,$05,$07
 
-db $03,$03,$04,$09,$05,$07,$00,$00
+DATA_00_092A:
+db $00,$00
 db $11,$11,$00,$11,$11,$00,$AA,$AA
 db $CC,$CC,$DD,$DD,$EE,$EE,$00,$FF
 db $0B,$0B,$B0,$B0,$22,$22,$33,$33
@@ -1487,15 +1565,13 @@ db $00,$08,$00,$80,$08,$11,$80,$11
 ;unknown
 db $77,$77
 
-
-
 CODE_00_0956:
 LD A, [HL]
 LDH [$FF94], A
 SWAP A
 AND $0F
 PUSH HL
-LD HL, $091A
+LD HL, DATA_00_091A
 RST $20
 LD C, A
 POP HL
@@ -1593,7 +1669,7 @@ INC D
 CODE_00_09EA:
 LD A, C
 ADD A, A
-LD HL, $092A
+LD HL, DATA_00_092A
 RST $18
 LD A, [HL+]
 LD [DE], A
@@ -1610,8 +1686,6 @@ POP HL
 POP DE
 RET
 
-
-
 CODE_00_09FE:
 LDH [$FF96], A
 PUSH BC
@@ -1619,9 +1693,10 @@ PUSH DE
 PUSH HL
 XOR A
 LD [$CA0D], A
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0A23
+
 LD [TileDetectionArray+253], A
 LD [$CA00], A
 LD [$CA05], A
@@ -1674,7 +1749,6 @@ BIT 3, A
 JR NZ, CODE_00_0A7C
 RET
 
-
 CODE_00_0A70:
 DEC D
 JR CODE_00_0A80
@@ -1722,7 +1796,7 @@ JR CODE_00_0A73
 
 CODE_00_0AA6:
 LD HL, $FF98
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD B, A
 LD A, [$CA05]
 OR B
@@ -1749,8 +1823,6 @@ POP DE
 POP BC
 RET
 
-
-
 CODE_00_0AD2:
 LD A, D
 CP $10
@@ -1762,7 +1834,6 @@ CODE_00_0ADB:
 CP $90
 JR C, CODE_00_0AE1
 LD A, $8C
-
 
 CODE_00_0AE1:
 PUSH DE
@@ -1821,12 +1892,11 @@ CODE_00_0B30:
 XOR A
 RET
 
-
 CODE_00_0B32:
 LD A, $01
 RET
 
-
+DATA_00_0B35:
 db $00,$03,$00,$04,$00,$05,$01,$04
 db $02
 
@@ -1863,9 +1933,8 @@ LD A, $01
 LD [$CA05], A
 RET
 
-
 CODE_00_0B5E:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0B6E
 LD A, B
@@ -1878,9 +1947,8 @@ CODE_00_0B6E:
 XOR A
 RET
 
-
 CODE_00_0B70:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0B32
 LD A, $01
@@ -1893,7 +1961,7 @@ RET
 
 
 CODE_00_0B85:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0B9B
 LDH A, [$FF96]
@@ -1909,9 +1977,8 @@ CODE_00_0B9B:
 XOR A
 RET
 
-
 CODE_00_0B9D:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0BAD
 LDH A, [$FF96]
@@ -1924,18 +1991,16 @@ CODE_00_0BAD:
 LD A, $01
 RET
 
-
 CODE_00_0BB0:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JP NZ, CODE_00_0B32
 LD A, $01
 LD [TileDetectionArray+255], A
 RET
 
-
 CODE_00_0BBD:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0BDF
 LDH A, [$FF96]
@@ -1959,9 +2024,8 @@ CODE_00_0BDF:
 LD A, $01
 RET
 
-
 CODE_00_0BE2:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR NZ, CODE_00_0BEC
 INC A
@@ -1971,16 +2035,13 @@ CODE_00_0BEC:
 XOR A
 RET
 
-
-
 CODE_00_0BEE:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 JR Z, CODE_00_0BF8
 POP AF
 LD A, $01
 RET
-
 
 CODE_00_0BF8:
 LD A, [$CA05]
@@ -2019,7 +2080,6 @@ JR Z, CODE_00_0C31
 DEC A
 LD [$CA0C], A
 RET
-
 
 CODE_00_0C29:
 CP $03
@@ -2067,7 +2127,7 @@ CODE_00_0C63:
 LDH A, [$FF94]
 PUSH AF
 LD A, [$CA06]
-LD HL, $0B35
+LD HL, DATA_00_0B35
 RST $20
 LD D, A
 LD A, $01
@@ -2082,7 +2142,6 @@ LDH [$FF9C], A
 POP BC
 JR CODE_00_0C91
 
-
 CODE_00_0C81:
 LDH [$FF9C], A
 CP $9F
@@ -2093,7 +2152,6 @@ JR CODE_00_0C91
 
 CODE_00_0C8E:
 CALL CODE_00_07F7
-
 
 CODE_00_0C91:
 CALL CODE_00_37B6
@@ -2127,24 +2185,23 @@ DEC C
 JR NZ, CODE_00_0CAE
 RET
 
-
-
 CODE_00_0CC6:
 LD A, [FrameCounter]
 AND $03
 CP $03
 JR Z, CODE_00_0CDF
+
 LD A, [$CA04]
 AND A
 JP NZ, CODE_00_0B70
+
 LD A, [$C208]
 AND $7F
 LD [$C208], A
 RET
 
-
 CODE_00_0CDF:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 RET NZ
 
@@ -2192,8 +2249,6 @@ POP DE
 POP BC
 RET
 
-
-
 CODE_00_0D31:
 CALL CODE_00_0AD2
 LD A, [HL]
@@ -2225,8 +2280,6 @@ JP CODE_00_0BBD
 
 CODE_00_0D5B:
 RET
-
-
 
 CODE_00_0D5C:
 PUSH BC
@@ -2284,22 +2337,20 @@ LD H, A
 ADD HL, DE
 LD A, [HL]
 BIT 0, C
-JR NZ, CODE_00_0DBF
+JR NZ, LOOP_00_0DBF
 SRL A
 SRL A
 SRL A
 SRL A
 
-CODE_00_0DBF:
+LOOP_00_0DBF:
 SRL A
 DEC B
-JR NZ, CODE_00_0DBF
+JR NZ, LOOP_00_0DBF
 
 CODE_00_0DC4:
 POP BC
 RET
-
-
 
 CODE_00_0DC6:
 LD HL, $C8F8
@@ -2339,10 +2390,10 @@ SET 2, A
 LD [$C627], A
 RET
 
-
 CODE_00_0DF6:
 BIT 0, [HL]
 JR Z, CODE_00_0E33
+
 LD [HL], $00
 LD HL, $C631
 LD A, [$C8F9]
@@ -2386,15 +2437,17 @@ LD A, [$C8FA]
 BIT 7, A
 JR Z, CODE_00_0E47
 
-LD BC, OAMUploadCode
+LD BC, $FF80
 
 CODE_00_0E47:
 LD A, [$C633]
 ADD A, C
 LD L, A
+
 LD A, [$C634]
 ADC A, B
 LD H, A
+
 CALL CODE_00_04E6
 LD A, [$C8F8]
 OR $80
@@ -2418,9 +2471,11 @@ LD [$C633], A
 LD A, [$C634]
 ADC A, D
 LD [$C634], A
+
 LD A, [FrameCounter]
 BIT 0, A
 JR Z, CODE_00_0E8B
+
 SLA L
 
 CODE_00_0E8B:
@@ -2434,7 +2489,6 @@ LD HL, $C8FB
 DEC [HL]
 RET NZ
 
-
 CODE_00_0E9E:
 XOR A
 LD [$C8F8], A
@@ -2442,6 +2496,7 @@ LD [$C8F9], A
 LD [$C8FA], A
 RET
 
+DATA_00_0EA9:
 ;unknown
 db $00
 
@@ -2456,8 +2511,6 @@ db $DF,$DF
 
 ;unknown
 db $DF
-
-
 
 CODE_00_0EB4:
 LD A, [$C64F]
@@ -2515,7 +2568,7 @@ AND $7F
 CP $10
 JR NC, CODE_00_0F19
 PUSH HL
-LD HL, $0EA9
+LD HL, DATA_00_0EA9
 RST $20
 LD B, A
 LDH A, [$FF94]
@@ -2620,74 +2673,93 @@ JP CODE_00_0ED4
 ;AN UNUSED RETURN OPCODE!!! WOW, HUGE DISCOVERY
 RET
 
-CODE_00_0F92:
+;copy variables from $C2X0-$C2YF into $C600-C61F
+GetCurrentEntityVariables_00_0F92:
 LD HL, $C200
 LD BC, $C600
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
+
 LD D, A
 LD L, A
 CALL CODE_00_0FB4
+
 LD L, D
-INC H
+INC H                                                       ;next 16 bytes
 JR CODE_00_0FB4
 
-
-CODE_00_0FA4:
-LD HL, $C600
-LD BC, $C200
-LD A, [$C1A2]
+StoreCurrentEntityVariables_0FA4:
+LD HL, $C600                                                ;current entity RAM
+LD BC, $C200                                                ;specific entity RAM
+LD A, [CurrentEntityRAMOffset]
 LD D, A
 LD C, A
 CALL CODE_00_0FB4
-LD C, D
-INC B
 
+LD C, D                                                     ;restore low byte
+INC B                                                       ;increment high byte (so, store to $C300 instead)
+
+;unrolled storage
 CODE_00_0FB4:
 LD A, [HL+]
-LD [BC], A
+LD [BC], A                                                  ;variable 1
 INC C
+
+LD A, [HL+]
+LD [BC], A                                                  ;variable 2
+INC C
+
+LD A, [HL+]
+LD [BC], A                                                  ;variable 3... I think you get the idea
+INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
-LD A, [HL+]
-LD [BC], A
-INC C
-LD A, [HL+]
-LD [BC], A
-INC C
+
 LD A, [HL+]
 LD [BC], A
 INC C
@@ -2695,14 +2767,14 @@ RET
 
 CODE_00_0FE5:
 XOR A
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 LD [CurrentOAMSlot], A
 
 SetBankAndBackup 1
 
-CODE_00_0FF3:
+LOOP_00_0FF3:
 LD HL, $C200
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 OR L
 LD L, A
 
@@ -2710,24 +2782,25 @@ LD A, [HL]
 AND $7F
 JR Z, CODE_00_1023
 LD E, A
-CALL CODE_00_0F92
+CALL GetCurrentEntityVariables_00_0F92
 
 LD A, E
 ExecutePointersWithDestination CODE_00_1011
 
-dw CODE_00_1033                                             ;unused pointer
-dw CODE_00_118A
-dw CODE_00_1A28
-dw CODE_00_104D
+dw CODE_00_1033                                             ;unused pointer (clear all OAM)
+dw CODE_00_118A                                             ;player code I think
+dw CODE_00_1A28                                             ;other level entities
+dw CODE_00_104D                                             ;runs scrooge's blinking eye code at the title screen
 
 CODE_00_1011:
 CALL CODE_00_10B6
-LD A, [$C1A2]
+
+LD A, [CurrentEntityRAMOffset]
 AND A
-CALL NZ, CODE_00_0FA4
+CALL NZ, StoreCurrentEntityVariables_0FA4
 
 LD A, [$C600]
-BIT 7, A
+BIT 7, A                                                    ;check if bit 7 is clear, can display graphics
 CALL Z, CODE_01_7EA0
 
 CODE_00_1023:
@@ -2735,17 +2808,17 @@ LD A, [$C8F8]
 BIT 1, A
 JR NZ, CODE_00_1033
 
-LD HL, $C1A2
+LD HL, CurrentEntityRAMOffset
 LD A, [HL]
-ADD A, $10
+ADD A, $10                                                  ;next entity's set of data
 LD [HL], A
-JR NC, CODE_00_0FF3
+JR NC, LOOP_00_0FF3                                         ;
 
 CODE_00_1033:
 LD HL, OAM_Y
 
 LD A, [CurrentOAMSlot]
-ADD A, L
+ADD A, L                                                    ;L is zero (low byte), so....... not sure what this is for
 LD L, A
 
 LOOP_00_103B:
@@ -2755,19 +2828,24 @@ RET NC
 LD [HL], $00                                                ;off this OAM tile
 
 ADD A, $04                                                  ;next OAM slot
-LD L, A
-JR LOOP_00_103B
+LD L, A                                                     ;
+JR LOOP_00_103B                                             ;
 
-db $00,$A6,$00,$B6,$00,$A5,$00,$B5
+;tilemap for scrooge's eye at the title screen
+;first byte is property, second is tile
+DATA_00_1045:
+db $00,$A6,$00,$B6
+db $00,$A5,$00,$B5
 
 CODE_00_104D:
-XOR A
+XOR A                                                       ;default eye frame
 LD [$C605], A
+
 LD A, [FrameCounter]
 CP $10
 RET NC
 
-LD A, $01
+LD A, $01                                                   ;wink
 LD [$C605], A
 RET
 
@@ -2815,7 +2893,6 @@ CODE_00_109F:
 CALL CODE_00_0D5C
 JR NC, CODE_00_1099
 
-
 CODE_00_10A4:
 LD A, $01
 LD [$C8F8], A
@@ -2835,7 +2912,7 @@ LD A, [$C8F8]
 BIT 0, A
 RET Z
 
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 AND A
 RET Z
 
@@ -2878,7 +2955,7 @@ LD A, B
 AND A
 RET NZ
 
-JP CODE_00_36D8
+JP InitializeEntityVariables_00_36D8
 
 CODE_00_10EE:
 LD B, $FF
@@ -2901,7 +2978,7 @@ CP $F0
 RET NC
 
 LD A, [Player_State]
-CP $03
+CP Player_State_Climbing
 JR NZ, CODE_00_114E
 
 LD A, [$C201]
@@ -2910,9 +2987,8 @@ LD D, $01
 JR C, CODE_00_1155
 JR CODE_00_114E
 
-
 CODE_00_111F:
-LD B, $00
+LD B, Player_State_FallingOrGrounded
 LD A, [$C8F8]
 BIT 1, A
 RET NZ
@@ -2920,6 +2996,7 @@ RET NZ
 XOR A
 LD [$CA02], A
 LD [TileDetectionArray+254], A
+
 LD A, $02
 CALL CODE_00_09FE
 JR NC, CODE_00_113B
@@ -2932,10 +3009,10 @@ CODE_00_113B:
 LD A, [$C201]
 CP $F0
 JR NC, CODE_00_114E
+
 LD A, [$C201]
 CP $A0
 RET NC
-
 CP $80
 LD D, $02
 JR NC, CODE_00_1155
@@ -2948,10 +3025,13 @@ RET
 CODE_00_1155:
 CALL CODE_00_0D5C
 JR NC, CODE_00_114E
+
 LD A, $02
 LD [$C8F8], A
+
 LD A, B
 LD [$C8FA], A
+
 LD A, [$C630]
 AND A
 RET NZ
@@ -2979,8 +3059,8 @@ CODE_00_118A:
 LD HL, $DF4F
 INC [HL]
 LD A, [Player_State]
-CP $08
-JP Z, CODE_00_16D4
+CP Player_State_Dead
+JP Z, PlayerStateCode_DeadOrHurt_00_16D4
 
 LD HL, CODE_00_1203
 PUSH HL
@@ -2995,12 +3075,14 @@ JR Z, CODE_00_11C0
 LD A, [$DF4F]
 AND $01
 JR NZ, CODE_00_11AE
+
 DEC [HL]
 
 CODE_00_11AE:
 LD A, [HL]
 CP $02
 JR NC, CODE_00_11B7
+
 XOR A
 LD [HL], A
 LDH [CurrentMusic], A
@@ -3017,16 +3099,16 @@ CODE_00_11C0:
 LD A, [$DF54]
 AND A
 JR NZ, CODE_00_11F5
+
 LD A, [$CA00]
 AND A
 RET Z
 
-LD A, $05
-CALL QueueSoundPrep_00_072B
+LD A, SFX_Damage                                            ;
+CALL QueueSoundPrep_00_072B                                 ;yikes!
 
-LD A, $06
-LD [Player_State], A
-
+LD A, Player_State_Damage                                   ;
+LD [Player_State], A                                        ;scrooge got damaged. he will seek legal action against you
 
 CODE_00_11D5:
 LD A, $80
@@ -3036,8 +3118,8 @@ CALL CODE_00_1417
 LD [Player_PogoFlag], A
 LD [$CA00], A
 
-LD HL, PlayerHealth
-DEC [HL]
+LD HL, PlayerHealth                                         ;
+DEC [HL]                                                    ;minus health
 
 LD A, [SelectedDifficulty]                                  ;check if difficulty is EZ
 AND A                                                       ;
@@ -3051,7 +3133,7 @@ AND A                                                       ;
 RET NZ                                                      ;
 
 POP HL                                                      ;oops.
-JP CODE_00_16D4                                             ;
+JP PlayerStateCode_DeadOrHurt_00_16D4                       ;
 
 CODE_00_11F5:
 AND $04
@@ -3069,7 +3151,7 @@ CODE_00_1203:
 LD A, [Player_State]
 AND A
 JR Z, CODE_00_1217
-CP $05
+CP Player_State_Ducking
 JR Z, CODE_00_1217
 
 XOR A
@@ -3082,24 +3164,25 @@ CODE_00_1217:
 ExecutePointersWithDestination CODE_00_123D
 
 ;player states!
-dw CODE_00_12C3
-dw CODE_00_17AE
-dw CODE_00_17ED
-dw CODE_00_189C
-dw CODE_00_148D
-dw CODE_00_1747
-dw CODE_00_1783
-dw CODE_00_1725
-dw CODE_00_16D4                                             ;unused pointer
-dw CODE_00_1763
-dw CODE_00_15E1
-dw CODE_00_162E
-dw CODE_00_168B
-dw CODE_00_159B
-dw CODE_00_16C3
-dw CODE_00_15D5
-dw CODE_00_123D
+dw PlayerStateCode_FallingOrGrounded_00_12C3
+dw PlayerStateCode_Rising_00_17AE
+dw PlayerStateCode_Pogo_00_17ED
+dw PlayerStateCode_Climbing_00_189C
+dw PlayerStateCode_ReadyCane_00_148D
+dw PlayerStateCode_Ducking_00_1747
+dw PlayerStateCode_Damage_00_1783
+dw PlayerStateCode_Stuck_00_1725
+dw PlayerStateCode_DeadOrHurt_00_16D4                       ;unused pointer (dead state skips some of the prior code to jump to this code)
+dw PlayerStateCode_StuckEntity_00_1763
+dw PlayerStateCode_ClimbingEntity_00_15E1
+dw PlayerStateCode_MineCart_00_162E
+dw PlayerStateCode_OnSpritePlatform_00_168B
+dw PlayerStateCode_EnteringBossArena_00_159B
+dw PlayerStateCode_Teleporting_00_16C3
+dw PlayerStateCode_Message_00_15D5
+dw PlayerStateCode_PickedRaceTreasure_00_123D
 
+PlayerStateCode_PickedRaceTreasure_00_123D:
 CODE_00_123D:
 CALL CODE_00_0CC6
 
@@ -3111,6 +3194,7 @@ SLA A
 LD C, A
 LD B, $00
 ADD HL, BC
+
 LD A, [HL+]
 LD [$C205], A
 
@@ -3137,7 +3221,6 @@ CODE_00_126B:
 LD A, [TileDetectionArray+255]
 AND A
 JR NZ, CODE_00_1277
-
 
 CODE_00_1271:
 LD BC, $FFFF
@@ -3186,9 +3269,11 @@ LD A, $01
 
 CODE_00_12AD:
 LD [$DF64], A
+
 LD A, [$C208]
 AND $20
 JR NZ, CODE_00_12BD
+
 LD BC, $0001
 JP CODE_00_105D
 
@@ -3196,9 +3281,9 @@ CODE_00_12BD:
 LD BC, $FFFF
 JP CODE_00_107C
 
-CODE_00_12C3:
-LDH A, [JoypadInputHolding]
-BitA JoypadInput_Right                                      ;check if holding right
+PlayerStateCode_FallingOrGrounded_00_12C3:
+LDH A, [JoypadInputHolding]                                 ;
+BitTest JoypadInput_Right, A                                ;check if holding right
 JR Z, CODE_00_12D0
 
 CALL CODE_00_125F
@@ -3207,13 +3292,13 @@ XOR A                                                       ;x-flip?
 LD [$C208], A
 
 CODE_00_12D0:
-LDH A, [JoypadInputHolding]
-BitA JoypadInput_Left                                       ;check if holding left
+LDH A, [JoypadInputHolding]                                 ;
+BitTest JoypadInput_Left, A                                 ;check if holding left
 JR Z, CODE_00_12DE
 
 CALL CODE_00_126B
 
-LD A, $20
+LD A, OAMProp_XFlip                                         ;this has to be x-flip
 LD [$C208], A
 
 CODE_00_12DE:
@@ -3233,7 +3318,7 @@ AND A
 JR Z, CODE_00_131F
 
 LDH A, [JoypadInputHolding]                                 ;check if holding up (for climbing)
-BitA JoypadInput_Up
+BitTest JoypadInput_Up, A                                   ;
 JR Z, CODE_00_131F
 
 CALL CODE_00_1967
@@ -3241,6 +3326,7 @@ CALL CODE_00_1907
 
 XOR A
 LD [Player_PogoFlag], A
+
 LD HL, $C203
 LD A, [HL]
 LD [$DF61], A
@@ -3257,7 +3343,7 @@ LD B, A
 CODE_00_1318:
 LD [HL], B
 
-LD A, $03
+LD A, Player_State_Climbing
 LD [Player_State], A
 RET
 
@@ -3271,7 +3357,7 @@ CALL CODE_00_18F6
 CODE_00_1329:
 LD A, [$CA01]
 AND A
-JP NZ, CODE_00_16D4
+JP NZ, PlayerStateCode_DeadOrHurt_00_16D4
 
 LD A, [$DF65]
 AND A
@@ -3292,66 +3378,72 @@ LD [$DF65], A
 XOR A                                                       ;A is already zero...
 LD [$DF52], A
 
-LD A, [Player_State]
-CP $05
+LD A, [Player_State]                                        ;check if player is currently ducking
+CP Player_State_Ducking
 RET Z
 
 LD A, [$DF54]
 CP $68
 RET NC
 
-LD A, [Player_PogoFlag]
-AND A
-JR Z, CODE_00_138C
+LD A, [Player_PogoFlag]                                     ;
+AND A                                                       ;
+JR Z, CODE_00_138C                                          ;check if player is doing pogo
+
 LD A, [$CA02]
 AND A
 JR Z, CODE_00_136B
-LD A, $02
-CALL QueueSoundPrep_00_072B
+
+LD A, SFX_PogoBounce                                        ;bounce on solid ground
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_136B:
 LD A, [TileDetectionArray+254]
 AND A
 JR Z, CODE_00_1377
 
-LD A, $07
-LD [Player_State], A
-RET
-
+LD A, Player_State_Stuck                                    ;sucked into snow
+LD [Player_State], A                                        ;
+RET                                                         ;
 
 CODE_00_1377:
 LDH A, [JoypadInputHolding]                                 ;holding B?
-BitA JoypadInput_B
-JR Z, CODE_00_1388                                          ;
+BitTest JoypadInput_B, A                                    ;
+JR Z, CODE_00_1388
 
-LD A, $02
-LD [Player_State], A
+LD A, Player_State_Pogo                                     ;
+LD [Player_State], A                                        ;
+
 CALL CODE_00_1417
-JP CODE_00_17ED
+JP PlayerStateCode_Pogo_00_17ED
 
 CODE_00_1388:
 XOR A
 LD [Player_PogoFlag], A
 
 CODE_00_138C:
-LD A, $00
-LD [Player_AnimationFrame], A
+LD A, Player_AnimationFrame_Standstill                      ;can XOR A instead.
+LD [Player_AnimationFrame], A                               ;
 
 LDH A, [JoypadInputHolding]
 AND JoypadInput_Right|JoypadInput_Left
 JR Z, CODE_00_13A0
+
 LD BC, $DF53
-LD HL, DATA_00_199A
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_Walking_00_199A                ;
+CALL AnimatePlayer_00_1979
 
 CODE_00_13A0:
 LD A, [$DF5B]
 AND A
 JR Z, CODE_00_13B4
+
 XOR A
 LD [$DF5B], A
-LD A, $01
-CALL QueueSoundPrep_00_072B
+
+LD A, SFX_GroundLand                                        ;
+CALL QueueSoundPrep_00_072B                                 ;
+
 LD A, $01
 LD [$DF5C], A
 
@@ -3360,8 +3452,8 @@ LD A, [$DF5C]
 AND A
 JR Z, CODE_00_13C5
 LD BC, $DF5C
-LD HL, DATA_00_19AB
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_Duck_00_19AB
+CALL AnimatePlayer_00_1979
 JR CODE_00_13C9
 
 CODE_00_13C5:
@@ -3371,47 +3463,52 @@ LD [$DF5B], A
 CODE_00_13C9:
 LD A, [$DF5E]
 AND A
-JP NZ, CODE_00_148D
+JP NZ, PlayerStateCode_ReadyCane_00_148D
+
 LD A, [$CA07]
 AND A
 JR Z, CODE_00_13E4
+
 LD A, $01
 LD [$DF5F], A
-LD A, $04
+
+LD A, Player_State_ReadyCane
 LD [Player_State], A
+
 XOR A
 LD [$CA07], A
 
 CODE_00_13E4:
 LD A, [Player_State]
-CP $0C
-JR Z, CODE_00_13FE
-LDH A, [JoypadInputHolding]
-BitA JoypadInput_Down
+CP Player_State_OnSpritePlatform
 JR Z, CODE_00_13FE
 
-LD A, $05
+LDH A, [JoypadInputHolding]
+BitTest JoypadInput_Down, A
+JR Z, CODE_00_13FE
+
+LD A, Player_State_Ducking
 LD [Player_State], A
 
 LD A, $01
 LD [$DF5D], A
-JP CODE_00_1747
+JP PlayerStateCode_Ducking_00_1747
 
 CODE_00_13FE:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 CALL Z, CODE_00_1417
 
 LD A, [$DF59]
 AND A
 JR NZ, RETURN_00_1416
 
-LDH A, [JoypadInputHolding]
-BitA JoypadInput_A
-JR Z, RETURN_00_1416
+LDH A, [JoypadInputHolding]                                 ;
+BitTest JoypadInput_A, A                                    ;check if player pressed A
+JR Z, RETURN_00_1416                                        ;
 
-LD A, $01
-LD [Player_State], A
+LD A, Player_State_Rising
+LD [Player_State], A                                        ;Juuuuuuuuuump!
 
 RETURN_00_1416:
 RET
@@ -3423,39 +3520,39 @@ LD [$DF56], A
 LD [$DF59], A
 RET
 
-
 CODE_00_1422:
 XOR A
 LD [Player_State], A
-LD A, $0C
-LD [Player_AnimationFrame], A
+
+LD A, Player_AnimationFrame_Airborn                         ;show airborn frame
+LD [Player_AnimationFrame], A                               ;
 
 LD A, $01
 LD [$DF5B], A
 
-LD A, [Player_PogoFlag]
+LD A, [Player_PogoFlag]                                     ;check if using cane for pogo jump
 AND A
 JR Z, CODE_00_143B
 
-LD A, $02
-LD [Player_AnimationFrame], A
+LD A, Player_AnimationFrame_Pogo
+LD [Player_AnimationFrame], A                               ;if using pogo, obviously show the pogo frame
 
 CODE_00_143B:
 LD A, [$DF5E]
 AND A
-JR NZ, CODE_00_144E
+JR NZ, CODE_00_144E                                         ;if player is currently holding against a solid object, will show ready cane frame instead
 
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_B                                          ;check if holding B in air
+BitTest JoypadInput_B, A                                    ;check if holding B in air
 JR Z, CODE_00_1453
 
 LD A, $01                                                   ;we're using pogo cane
-LD [Player_PogoFlag], A
+LD [Player_PogoFlag], A                                     ;
 JR CODE_00_1457
 
 CODE_00_144E:
-LD A, $03
-LD [Player_AnimationFrame], A
+LD A, Player_AnimationFrame_ReadyCane1                      ;
+LD [Player_AnimationFrame], A                               ;
 
 CODE_00_1453:
 XOR A                                                       ;
@@ -3467,7 +3564,8 @@ AND A
 JR Z, CODE_00_1466
 CP $68
 JR C, CODE_00_1466
-LD A, $0F
+
+LD A, Player_AnimationFrame_Hurt
 LD [Player_AnimationFrame], A
 
 CODE_00_1466:
@@ -3493,7 +3591,7 @@ LD A, [$DF5E]
 AND A
 RET Z
 
-CODE_00_148D:
+PlayerStateCode_ReadyCane_00_148D:
 CALL CODE_00_1576
 LD A, [$DF5E]
 CP $04
@@ -3514,8 +3612,8 @@ LD A, [$DF5F]
 AND A
 JR Z, CODE_00_14C1
 LD BC, $DF5F
-LD HL, DATA_00_19AF
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_CaneReadyStart_00_19AF
+CALL AnimatePlayer_00_1979
 JR CODE_00_14FB
 
 CODE_00_14C1:
@@ -3526,8 +3624,8 @@ LD [$DF5F], A
 
 CODE_00_14CA:
 LD BC, $DF5F
-LD HL, DATA_00_19B4
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_CaneReadyLoop_00_19B4
+CALL AnimatePlayer_00_1979
 LD A, [$DF59]
 AND A
 JR NZ, CODE_00_14E4
@@ -3539,10 +3637,10 @@ JP Z, CODE_00_1596
 
 CODE_00_14E4:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_B
+BitTest JoypadInput_B, A
 JR Z, CODE_00_14FB
 
-LD A, $04
+LD A, SFX_CaneHit
 CALL QueueSoundPrep_00_072B
 
 LD A, $02
@@ -3554,7 +3652,7 @@ JR CODE_00_1515
 
 CODE_00_14FB:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 
 CALL Z, CODE_00_1417
 
@@ -3563,10 +3661,10 @@ AND A
 JR NZ, CODE_00_1513
 
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 JR Z, CODE_00_1513
 
-LD A, $01
+LD A, Player_State_Rising
 LD [Player_State], A
 
 CODE_00_1513:
@@ -3577,17 +3675,19 @@ LD A, [$DF5F]
 AND A
 JR Z, CODE_00_1526
 LD BC, $DF5F
-LD HL, DATA_00_19BA
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_UsingCaneStart_00_19BA
+CALL AnimatePlayer_00_1979
 JR CODE_00_1576
 
 CODE_00_1526:
 LD A, [$CA05]
 AND A
 JR NZ, CODE_00_1538
+
 LD A, $03
 LD [$DF5E], A
-LD A, $09
+
+LD A, SFX_CaneHitWrong
 CALL QueueSoundPrep_00_072B
 JR CODE_00_153D
 
@@ -3605,8 +3705,8 @@ LD A, [$DF5F]
 AND A
 JR Z, CODE_00_1555
 LD BC, $DF5F
-LD HL, DATA_00_19C6
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_UsingCaneFail_00_19C6
+CALL AnimatePlayer_00_1979
 JR CODE_00_1576
 
 CODE_00_1555:
@@ -3619,8 +3719,8 @@ LD A, [$DF5F]
 AND A
 JR Z, CODE_00_156E
 LD BC, $DF5F
-LD HL, DATA_00_19C0
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_UsingCaneSuccess_00_19C0
+CALL AnimatePlayer_00_1979
 JR CODE_00_1576
 
 CODE_00_156E:
@@ -3631,7 +3731,7 @@ JP CODE_00_158C
 
 CODE_00_1576:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Right
+BitTest JoypadInput_Right, A
 JR Z, CODE_00_1580
 
 LD A, $08
@@ -3639,7 +3739,7 @@ JR CODE_00_1588
 
 CODE_00_1580:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Left
+BitTest JoypadInput_Left, A
 JR Z, CODE_00_158C
 
 LD A, $04
@@ -3648,29 +3748,31 @@ CODE_00_1588:
 CALL CODE_00_09FE
 RET C
 
-
 CODE_00_158C:
 XOR A
 LD [$DF5E], A
+
 LD A, [Player_State]
-CP $01
+CP Player_State_Rising
 RET Z
 
 CODE_00_1596:
-XOR A
-LD [Player_State], A
+XOR A                                                       ;Player_State_FallingOrGrounded
+LD [Player_State], A                                        ;
 RET
 
-CODE_00_159B:
+PlayerStateCode_EnteringBossArena_00_159B:
 LD BC, $DF53
-LD HL, DATA_00_199A
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_Walking_00_199A
+CALL AnimatePlayer_00_1979
+
 LD HL, $C203
 LD E, [HL]
 LD D, $03
 LD A, [$C208]
 AND $20
-JR NZ, CODE_00_15B8
+JR NZ, CODE_00_15B8                                         ;check which direction the player is walking
+
 DEC [HL]
 LD BC, $0001
 INC D
@@ -3684,39 +3786,40 @@ CODE_00_15BC:
 LD A, [$DF4F]
 AND $01
 JR NZ, CODE_00_15C4
+
 LD [HL], E
 
 CODE_00_15C4:
 PUSH HL
 PUSH DE
-CALL CODE_00_0D5C
+CALL CODE_00_0D5C                                           ;camera scroll I imagine
 POP DE
 POP HL
 JR NC, CODE_00_15D0
 JP CODE_00_10A4
 
 CODE_00_15D0:
-XOR A
+XOR A                                                       ;Player_State_FallingOrGrounded
 LD [Player_State], A
 RET
 
 ;player during message state
-CODE_00_15D5:
-LD A, $00
+PlayerStateCode_Message_00_15D5:
+LD A, Player_AnimationFrame_Standstill                      ;player will stand still even if airborn during message
 LD [Player_AnimationFrame], A
 
 LD A, [MessageQueue]                                        ;
 LD [CurrentMessage], A                                      ;will display this message
 RET                                                         ;
 
-CODE_00_15E1:
-LDH A, [JoypadInputPress]
-BitA JoypadInput_A
+PlayerStateCode_ClimbingEntity_00_15E1:
+LDH A, [JoypadInputPress]                                   ;
+BitTest JoypadInput_A, A                                    ;check if pressed A while climbing
 JR Z, CODE_00_15EC
 
-XOR A
-LD [Player_State], A
-RET
+XOR A                                                       ;Player_State_FallingOrGrounded
+LD [Player_State], A                                        ;stop climbing, drop
+RET                                                         ;
 
 CODE_00_15EC:
 LD B, $28
@@ -3728,7 +3831,8 @@ LD C, $02
 
 CODE_00_15F9:
 CALL CODE_00_1618
-LD A, $12
+
+LD A, Player_AnimationFrame_Climbing1
 LD [Player_AnimationFrame], A
 
 CODE_00_1601:
@@ -3764,20 +3868,19 @@ ADD A, B
 LD [$C201], A
 RET
 
-
-CODE_00_162E:
+PlayerStateCode_MineCart_00_162E:
 LD A, [$C201]
 CP $80
 JR C, CODE_00_1638
-JP CODE_00_16D4
+JP PlayerStateCode_DeadOrHurt_00_16D4
 
 CODE_00_1638:
 LD B, $FE
 LD C, $09
 CALL CODE_00_1618
 
-LD A, $15
-LD [Player_AnimationFrame], A
+LD A, Player_AnimationFrame_InMinecart                      ;appear as in minecart
+LD [Player_AnimationFrame], A                               ;
 
 LD HL, $C305
 CALL CODE_00_1612
@@ -3787,13 +3890,13 @@ AND A
 JR NZ, CODE_00_1660
 
 LDH A, [JoypadInputPress]
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 RET Z
 
 CALL CODE_00_1612
 
-XOR A
-LD [Player_State], A
+XOR A                                                       ;Player_State_FallingOrGrounded
+LD [Player_State], A                                        ;
 
 LD A, $0C
 CALL CODE_00_18FB
@@ -3807,7 +3910,7 @@ LD A, $01
 LD [HL], A
 
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Down
+BitTest JoypadInput_Down, A
 JR Z, CODE_00_1676
 
 ;pogo out?
@@ -3829,18 +3932,18 @@ LD A, $01
 LD [$CA00], A
 RET
 
-CODE_00_168B:
+PlayerStateCode_OnSpritePlatform_00_168B:
 LDH A, [JoypadInputHolding]
-AND $FF^JoypadInput_Down                                    ;check if holding anything but d-pad down
+AND ~JoypadInput_Down                                       ;check if holding anything but d-pad down
 JR Z, CODE_00_169F
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 JR Z, CODE_00_1699
 
 LD HL, $C201
 DEC [HL]
 
 CODE_00_1699:
-XOR A
+XOR A                                                       ;Player_State_FallingOrGrounded
 LD [Player_State], A
 JR CODE_00_16BB
 
@@ -3855,41 +3958,46 @@ JR Z, CODE_00_16BB
 LD A, [$DF4F]
 AND $01
 CALL NZ, CODE_00_1601
-LD A, $00
+
+LD A, Player_AnimationFrame_Standstill
 LD [Player_AnimationFrame], A
 
 CODE_00_16BB:
 LD A, $01
 LD [$DF65], A
-JP CODE_00_12C3
+JP PlayerStateCode_FallingOrGrounded_00_12C3
 
-CODE_00_16C3:
+PlayerStateCode_Teleporting_00_16C3:
 LD A, $01
 LD [$C200], A
-LD A, [FrameCounter]
-AND $04
-RET Z
+
+LD A, [FrameCounter]                                        ;flicker graphics every 4 frames
+AND $04                                                     ;
+RET Z                                                       ;
 
 LD A, $81
 LD [$C200], A
 RET
 
-CODE_00_16D4:
-LD A, [Player_State]
-CP $08
-JR Z, CODE_00_1702
+PlayerStateCode_DeadOrHurt_00_16D4:
+LD A, [Player_State]                                        ;
+CP Player_State_Dead                                        ;
+JR Z, CODE_00_1702                                          ;
 
-LD A, $0F
+LD A, Player_AnimationFrame_Hurt                            ;damage frame
 LD [Player_AnimationFrame], A
 
 CALL CODE_00_1240
+
 XOR A
 LD [$DF4F], A
+
 LD HL, $DF6C
 LD [HL], A
 LD A, [$CA01]
 AND A
 JR NZ, CODE_00_16F4
+
 LD A, $FB
 LD [HL], A
 
@@ -3906,8 +4014,8 @@ LD A, B                                                     ;play either sound
 CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_1702:
-LD A, $08
-LD [Player_State], A
+LD A, Player_State_Dead                                     ;become dead
+LD [Player_State], A                                        ;
 
 LD A, [$DF4F]
 AND $03
@@ -3922,15 +4030,14 @@ LD A, [$DF6C]
 ADD A, [HL]
 LD [HL], A
 AND $F0
-CP $B0
+CP $B0                                                      ;check if player fell to the bottom of the screen?
 RET NZ
 
 LD HL, $C627
 SET 0, [HL]
 RET
 
-
-CODE_00_1725:
+PlayerStateCode_Stuck_00_1725:
 XOR A
 LD B, A
 CALL CODE_00_18F6
@@ -3939,14 +4046,14 @@ LD A, [TileDetectionArray+254]
 AND A
 JR Z, CODE_00_173C
 
-LD A, $14
-LD [Player_AnimationFrame], A
+LD A, Player_AnimationFrame_Stuck                           ;player gets stuck in snow
+LD [Player_AnimationFrame], A                               ;
 
-LDH A, [JoypadInputPress]
-BitA JoypadInput_A
-RET Z
+LDH A, [JoypadInputPress]                                   ;
+BitTest JoypadInput_A, A                                    ;
+RET Z                                                       ;
 
-LD B, $01
+LD B, Player_State_Rising                                   ;jump out of snow
 
 CODE_00_173C:
 LD A, B
@@ -3956,29 +4063,30 @@ CALL CODE_00_1417
 LD [Player_PogoFlag], A
 RET
 
-
-CODE_00_1747:
+PlayerStateCode_Ducking_00_1747:
 LD A, [$DF5D]
 AND A
 JR Z, CODE_00_1756
+
 LD BC, $DF5D
-LD HL, DATA_00_19A8
-CALL CODE_00_1979
+LD HL, PlayerAnimationTable_DuckStart_00_19A8
+CALL AnimatePlayer_00_1979
 
 CODE_00_1756:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Down
+BitTest JoypadInput_Down, A
 JR NZ, CODE_00_1760
 
-XOR A
-LD [Player_State], A
+XOR A                                                       ;snap out of ducking state
+LD [Player_State], A                                        ;
 
 CODE_00_1760:
 JP CODE_00_12DE
 
-CODE_00_1763:
-LD A, $14
-LD [Player_AnimationFrame], A
+PlayerStateCode_StuckEntity_00_1763:
+LD A, Player_AnimationFrame_Stuck                           ;
+LD [Player_AnimationFrame], A                               ;
+
 LD A, [$DF66]
 AND A
 RET NZ
@@ -3997,20 +4105,22 @@ LD A, $04
 LD [$DF57], A
 JP CODE_00_1820
 
-CODE_00_1783:
+PlayerStateCode_Damage_00_1783:
 LD A, [$DF54]
 AND A
 JR NZ, CODE_00_178E
-XOR A
-LD [Player_State], A
-RET
 
+XOR A                                                       ;Player_State_FallingOrGrounded
+LD [Player_State], A                                        ;
+RET                                                         ;
 
 CODE_00_178E:
 CP $68
-JP C, CODE_00_12C3
-LD A, $0F
+JP C, PlayerStateCode_FallingOrGrounded_00_12C3
+
+LD A, Player_AnimationFrame_Hurt
 LD [Player_AnimationFrame], A
+
 LD A, [$C208]
 AND A
 JR Z, CODE_00_17A3
@@ -4025,22 +4135,26 @@ LD A, $01
 LD [$DF57], A
 JP CODE_00_1820
 
-CODE_00_17AE:
+PlayerStateCode_Rising_00_17AE:
 LD A, $08
 LD [$DF57], A
-LD A, $0C
+
+LD A, Player_AnimationFrame_Airborn
 LD [Player_AnimationFrame], A
+
 LD A, [Player_PogoFlag]
 AND A
 JR Z, CODE_00_17C3
-LD A, $02
+
+LD A, Player_AnimationFrame_Pogo
 LD [Player_AnimationFrame], A
 
 CODE_00_17C3:
 LD A, [$DF5E]
 AND A
 JR Z, CODE_00_17CE
-LD A, $03
+
+LD A, Player_AnimationFrame_ReadyCane1
 LD [Player_AnimationFrame], A
 
 CODE_00_17CE:
@@ -4049,7 +4163,7 @@ AND A
 JR NZ, CODE_00_17E1
 
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_B
+BitTest JoypadInput_B, A
 JR Z, CODE_00_17E1
 
 LD A, $01
@@ -4062,25 +4176,28 @@ LD [Player_PogoFlag], A
 
 CODE_00_17E5:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_A
+BitTest JoypadInput_A, A
 JR NZ, CODE_00_1816
 
 JR CODE_00_180E
 
-CODE_00_17ED:
+PlayerStateCode_Pogo_00_17ED:
 LD A, $10
 LD [$DF57], A
-LD A, $02
+
+LD A, Player_AnimationFrame_Pogo
 LD [Player_AnimationFrame], A
+
 LD A, [$DF56]
 CP $0F
 JR NC, CODE_00_1803
-LD A, $01
+
+LD A, Player_AnimationFrame_PogoBounce
 LD [Player_AnimationFrame], A
 
 CODE_00_1803:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_B
+BitTest JoypadInput_B, A
 JR NZ, CODE_00_1816
 
 LD A, $00
@@ -4127,24 +4244,30 @@ DEC [HL]
 CODE_00_1851:
 LD A, [$DF58]
 CALL CODE_00_18FB
+
 LD A, [$C201]
 CP $04
 JR C, CODE_00_1897
+
 LD A, [$CA03]
 AND A
 JR NZ, CODE_00_188B
+
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Right
+BitTest JoypadInput_Right, A
 JR Z, CODE_00_1871
+
 CALL CODE_00_1265
 XOR A
 LD [$C208], A
 
 CODE_00_1871:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Left
+BitTest JoypadInput_Left, A
 JR Z, CODE_00_187F
+
 CALL CODE_00_1271
+
 LD A, $20
 LD [$C208], A
 
@@ -4153,9 +4276,8 @@ LD HL, $DF55
 INC [HL]
 LD A, [$DF5E]
 AND A
-JP NZ, CODE_00_148D
+JP NZ, PlayerStateCode_ReadyCane_00_148D
 RET
-
 
 CODE_00_188B:
 LD A, $03
@@ -4166,12 +4288,11 @@ ADD A, $02
 LD [HL], A
 
 CODE_00_1897:
-XOR A
+XOR A                                                       ;Player_State_FallingOrGrounded
 LD [Player_State], A
 RET
 
-
-CODE_00_189C:
+PlayerStateCode_Climbing_00_189C:
 LD A, [TileDetectionArray+253]
 AND A
 JR NZ, CODE_00_18A8
@@ -4188,7 +4309,7 @@ RET
 
 CODE_00_18B3:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Down
+BitTest JoypadInput_Down, A
 JR Z, CODE_00_18C7
 CALL CODE_00_1967
 LD C, $01
@@ -4199,7 +4320,7 @@ JR Z, CODE_00_18E5
 
 CODE_00_18C7:
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Up                                         ;check if holding up
+BitTest JoypadInput_Up, A                                   ;check if holding up
 JR Z, CODE_00_18DB
 
 CALL CODE_00_1967
@@ -4221,7 +4342,6 @@ LD [$DF62], A
 CODE_00_18E5:
 XOR A
 LD [Player_State], A
-
 LD [Player_PogoFlag], A
 LD [$DF52], A
 
@@ -4229,14 +4349,10 @@ LD A, [$DF61]
 LD [$C203], A
 RET
 
-
-
 CODE_00_18F6:
 LD C, A
 CALL CODE_00_111F
 RET
-
-
 
 CODE_00_18FB:
 LD B, A
@@ -4248,8 +4364,6 @@ RET Z
 LD C, A
 CALL CODE_00_10EE
 RET
-
-
 
 CODE_00_1907:
 LD A, [$C631]
@@ -4266,8 +4380,7 @@ LD E, $0F
 CALL CODE_00_1943
 JR CODE_00_1907
 
-
-CODE_00_191E:
+LOOP_00_191E:
 LD A, [$C203]
 CP $44
 RET Z
@@ -4275,6 +4388,7 @@ RET Z
 LD D, $03
 LD BC, $FFFF
 JR C, CODE_00_192F
+
 LD BC, $0001
 INC D
 
@@ -4284,11 +4398,11 @@ RET NC
 
 LD E, $11
 CALL CODE_00_1943
+
 LD HL, $C603
 LD BC, $0010
 CALL CODE_00_10CC
-JR CODE_00_191E
-
+JR LOOP_00_191E
 
 CODE_00_1943:
 CALL CODE_00_10A4
@@ -4298,6 +4412,7 @@ LD D, A
 CODE_00_1948:
 DEC E
 JP Z, CODE_00_0DC6
+
 LD A, D
 ADD A, $10
 LD D, A
@@ -4306,6 +4421,7 @@ LD L, A
 LD A, [HL]
 AND A
 JR Z, CODE_00_1948
+
 LD HL, $C203
 LD BC, $0100
 LD A, D
@@ -4322,91 +4438,141 @@ AND $07                                                     ;
 JR NZ, CODE_00_1973                                         ;
 
 LD A, SFX_Climb                                             ;making climbing noise
-CALL QueueSoundPrep_00_072B
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_1973:
 LD BC, $DF60
-LD HL, DATA_00_19A3
+LD HL, PlayerAnimationTable_Climbing_00_19A3
 
-CODE_00_1979:
+;HL - animation table, BC - timer or something idk
+AnimatePlayer_00_1979:
 PUSH HL
 LD H, B
 LD L, C
+
 LD A, [$DF4F]
-AND $03
+AND $03                                                     ;every 4th frame?
 JR NZ, CODE_00_1984
+
 INC [HL]
 
 CODE_00_1984:
-LD D, $00
-LD E, [HL]
-POP HL
-ADD HL, DE
-LD A, [HL]
-CP $FF
+LD D, $00                                                   ;apply table offset (8-bit)
+LD E, [HL]                                                  ;
+POP HL                                                      ;
+ADD HL, DE                                                  ;
+
+LD A, [HL]                                                  ;
+CP $FF                                                      ;check if animation over
 JR Z, CODE_00_1992
-LD [Player_AnimationFrame], A
-RET
+LD [Player_AnimationFrame], A                               ;store player frame
+RET                                                         ;
 
 CODE_00_1992:
 LD H, B
 LD L, C
+
 XOR A
 LD [HL], A
 LD [$DF5B], A
 RET
 
-DATA_00_199A:
-db $09,$09,$0A,$0A,$0B,$0B,$0A,$0A
+;Animation tables, end with FF
+PlayerAnimationTable_Walking_00_199A:
+db Player_AnimationFrame_Walk1
+db Player_AnimationFrame_Walk1
+db Player_AnimationFrame_Walk2
+db Player_AnimationFrame_Walk2
+db Player_AnimationFrame_Walk3
+db Player_AnimationFrame_Walk3
+db Player_AnimationFrame_Walk2
+db Player_AnimationFrame_Walk2
 db $FF
 
-DATA_00_19A3:
-db $12,$12,$13,$13,$FF
+PlayerAnimationTable_Climbing_00_19A3:
+db Player_AnimationFrame_Climbing1
+db Player_AnimationFrame_Climbing1
+db Player_AnimationFrame_Climbing2
+db Player_AnimationFrame_Climbing2
+db $FF
 
-DATA_00_19A8:
-db $0D                                                      ;first byte - unused
-db $0D,$0D
+PlayerAnimationTable_DuckStart_00_19A8:
+db Player_AnimationFrame_Duck1                              ;first byte - unused
+db Player_AnimationFrame_Duck1
+db Player_AnimationFrame_Duck1
 
-DATA_00_19AB:
-db $0E,$0E,$0E,$FF
+PlayerAnimationTable_Duck_00_19AB:
+db Player_AnimationFrame_Duck2                              ;not actually animating, but sure
+db Player_AnimationFrame_Duck2
+db Player_AnimationFrame_Duck2
+db $FF
 
-DATA_00_19AF:
-db $0B                                                      ;first byte - unused
-db $0B,$0B,$0A,$0A
+PlayerAnimationTable_CaneReadyStart_00_19AF:
+db Player_AnimationFrame_Walk3                              ;unused
+db Player_AnimationFrame_Walk3
+db Player_AnimationFrame_Walk3
+db Player_AnimationFrame_Walk2
+db Player_AnimationFrame_Walk2
 
-DATA_00_19B4:
-db $03,$03,$03,$04
-db $04,$FF
+PlayerAnimationTable_CaneReadyLoop_00_19B4:
+db Player_AnimationFrame_ReadyCane1
+db Player_AnimationFrame_ReadyCane1
+db Player_AnimationFrame_ReadyCane1
+db Player_AnimationFrame_ReadyCane2
+db Player_AnimationFrame_ReadyCane2
+db $FF
 
-DATA_00_19BA:
-db $05                                                      ;first byte - unused
-db $05,$05,$06,$06,$FF
+PlayerAnimationTable_UsingCaneStart_00_19BA:
+db Player_AnimationFrame_UsingCane1                         ;unused
+db Player_AnimationFrame_UsingCane1
+db Player_AnimationFrame_UsingCane1
+db Player_AnimationFrame_UsingCane2
+db Player_AnimationFrame_UsingCane2
+db $FF
 
-DATA_00_19C0:
-db $07                                                      ;first byte - unused
-db $07,$07,$08,$08,$FF
+PlayerAnimationTable_UsingCaneSuccess_00_19C0:
+db Player_AnimationFrame_UsingCane3
+db Player_AnimationFrame_UsingCane3
+db Player_AnimationFrame_UsingCane3
+db Player_AnimationFrame_UsingCane4
+db Player_AnimationFrame_UsingCane4
+db $FF
 
-DATA_00_19C6:
-db $10                                                      ;first byte - unused
-
-
-db $10,$10,$11,$11,$10,$10,$11,$11
+PlayerAnimationTable_UsingCaneFail_00_19C6:
+db Player_AnimationFrame_UsingCaneWrong1                    ;unused
+db Player_AnimationFrame_UsingCaneWrong1
+db Player_AnimationFrame_UsingCaneWrong1
+db Player_AnimationFrame_UsingCaneWrong2
+db Player_AnimationFrame_UsingCaneWrong2
+db Player_AnimationFrame_UsingCaneWrong1
+db Player_AnimationFrame_UsingCaneWrong1
+db Player_AnimationFrame_UsingCaneWrong2
+db Player_AnimationFrame_UsingCaneWrong2
 db $FF
 
 DATA_00_19D0:
-db $00,$33,$87,$D3,$10,$33,$87
-db $D3,$11,$33,$87,$D3,$07,$33,$87
-db $D3,$08,$33,$87,$D3,$09,$33,$87
-db $D3,$0A,$33,$87,$D3,$00,$34,$27
-db $D3,$0B,$33,$87,$D3,$01,$33,$87
-db $D3,$02,$33,$87,$D3,$03,$33,$87
-db $D3,$04,$33,$87,$D3,$05,$33,$87
-db $D3,$06,$33,$87,$D3,$02,$43,$3F
-db $D3,$0C,$33,$87,$D3,$0D,$33,$87
-db $D3,$0E,$33,$87,$D3,$0F,$33,$87
-db $D3,$12,$33,$87,$D3,$00,$22,$1F
-db $D3
-
+db $00,$33,$87,$D3
+db $10,$33,$87,$D3
+db $11,$33,$87,$D3
+db $07,$33,$87,$D3
+db $08,$33,$87,$D3
+db $09,$33,$87,$D3
+db $0A,$33,$87,$D3
+db $00,$34,$27,$D3
+db $0B,$33,$87,$D3
+db $01,$33,$87,$D3
+db $02,$33,$87,$D3
+db $03,$33,$87,$D3
+db $04,$33,$87,$D3
+db $05,$33,$87,$D3
+db $06,$33,$87,$D3
+db $02,$43,$3F,$D3
+db $0C,$33,$87,$D3
+db $0D,$33,$87,$D3
+db $0E,$33,$87,$D3
+db $0F,$33,$87,$D3
+db $12,$33,$87,$D3
+db $00,$22,$1F,$D3
 
 CODE_00_1A28:
 LD A, [$C8F8]
@@ -4414,16 +4580,17 @@ BIT 1, A
 RET NZ
 
 LD HL, $DF72
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 CP [HL]
 JR NZ, CODE_00_1A4F
+
 INC HL
 DEC [HL]
 JR NZ, CODE_00_1A40
+
 XOR A
 LD [$DF72], A
 RET
-
 
 CODE_00_1A40:
 LD A, $02
@@ -4431,131 +4598,139 @@ LD [$C600], A
 LD A, [HL]
 AND $02
 JR Z, CODE_00_1A4F
+
 LD A, $82
 LD [$C600], A
 
 CODE_00_1A4F:
-LD HL, $C617
-LD A, [HL]
-AND A
-JR Z, CODE_00_1A5E
-DEC [HL]
+LD HL, CurrentEntity_WaitTimer                              ;
+LD A, [HL]                                                  ;
+AND A                                                       ;
+JR Z, CODE_00_1A5E                                          ;
+
+DEC [HL]                                                    ;decrement timer
 CALL CODE_00_32BB
 CALL CODE_00_3414
 RET
-
 
 CODE_00_1A5E:
 CALL CODE_00_32BB
 CALL CODE_00_3414
 
-CALL CODE_00_329E                                           ;get the first byte from a pointer (pointers at POINTERS_00_31C1)
+CALL GetEntityDataArgument_00_329E                          ;get the first byte from a pointer (pointers at POINTERS_00_31C1)
 LD C, A
-AND $3F                                                     ;bits 0-5...
-LD B, A
+AND $3F                                                     ;the rest of bits (0 through 5) contains some sort of value/props
+LD B, A                                                     ;
+
 LD A, C
 AND $C0                                                     ;bits 6 and 7...
-JR Z, CODE_00_1A88
-CP $40                                                      ;check if bit 6 specifically
+JR Z, CODE_00_1A88                                          ;if either is clear, get to executing a pointer
+CP $40                                                      ;check if bit 6 only is set
 JR NZ, CODE_00_1A79
-LD A, B
+
+LD A, B                                                     ;
 
 CODE_00_1A75:
-LD [$C617], A
+LD [CurrentEntity_WaitTimer], A                             ;set timer
 
 RETURN_00_1A78:
-RET
+RET                                                         ;
 
 CODE_00_1A79:
-CP $C0
+CP $C0                                                      ;check if both are set
 JR NZ, CODE_00_1A84
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E                          ;get next byte, it'll be the destination (low byte)
+
 LD C, A
 JP CODE_00_21FD
 
 CODE_00_1A84:
-CP $80
-JR Z, CODE_00_1AFE
+CP $80                                                      ;check if bit 7 only set
+JR Z, CODE_00_1AFE                                          ;other code pointers...
 
+;execute command
 CODE_00_1A88:
 LD A, B
 ExecutePointers
 
-dw CODE_00_36D8
-dw RETURN_00_1A78                                            ;unused pointer (do nothing)
-dw CODE_00_203A
-dw CODE_00_204A
-dw CODE_00_1FE7
-dw CODE_00_2007
-dw CODE_00_1FCF
-dw CODE_00_2115
-dw CODE_00_2158
-dw CODE_00_213C
-dw CODE_00_20BF
-dw CODE_00_20A6
-dw CODE_00_208D
-dw CODE_00_2053
-dw CODE_00_2198
-dw RETURN_00_1A78
-dw CODE_00_21D8
-dw CODE_00_21E9
-dw CODE_00_21A9
-dw CODE_00_21AD
-dw CODE_00_21BC
-dw CODE_00_21C0
-dw CODE_00_251B
-dw CODE_00_252B
-dw CODE_00_252F
-dw CODE_00_1F57
-dw CODE_00_1F2F
-dw CODE_00_1E34
-dw CODE_00_1F4E
-dw CODE_00_1EE7
-dw CODE_00_1F09
-dw CODE_00_1E1C
-dw CODE_00_1EF9
-dw CODE_00_1F28
-dw CODE_00_1E9D
-dw CODE_00_1E8F
-dw CODE_00_1E3E
-dw CODE_00_36F1
-dw CODE_00_1FDE
-dw CODE_00_1DFA
-dw CODE_00_1DB2
-dw CODE_00_1D4F
-dw CODE_00_1D3D
-dw CODE_00_1D46
-dw CODE_00_1D0A
-dw CODE_00_1C74
-dw CODE_00_1C66
-dw CODE_00_1C5F
-dw CODE_00_2033
-dw CODE_00_2043
-dw CODE_00_2036
-dw CODE_00_2046
-dw CODE_00_2027
-dw CODE_00_1C4D
-dw CODE_00_1C1B
-dw CODE_00_21D5
-dw CODE_00_1B4B
-dw CODE_00_1C14
+dw InitializeEntityVariables_00_36D8                        ;command $00
+dw RETURN_00_1A78                                           ;command $01 unused pointer (do nothing)
+dw CODE_00_203A                                             ;command $02
+dw CODE_00_204A                                             ;command $03
+dw CODE_00_1FE7                                             ;command $04
+dw CODE_00_2007                                             ;command $05
+dw CODE_00_1FCF                                             ;command $06
+dw CODE_00_2115                                             ;command $07
+dw CODE_00_2158                                             ;command $08
+dw CODE_00_213C                                             ;command $09
+dw CODE_00_20BF                                             ;command $0A
+dw CODE_00_20A6                                             ;command $0B
+dw CODE_00_208D                                             ;command $0C
+dw CODE_00_2053                                             ;command $0D
+dw CODE_00_2198                                             ;command $0E
+dw RETURN_00_1A78                                           ;command $0F (end processing commands for now)
+dw CODE_00_21D8                                             ;command $10 start fetching data from a subpointer
+dw CODE_00_21E9                                             ;command $11 a command to return from subpointer data to main pointer
+dw CODE_00_21A9                                             ;command $12
+dw CODE_00_21AD                                             ;command $13
+dw CODE_00_21BC                                             ;command $14
+dw CODE_00_21C0                                             ;command $15
+dw CODE_00_251B                                             ;command $16
+dw CODE_00_252B                                             ;command $17
+dw CODE_00_252F                                             ;command $18
+dw CODE_00_1F57                                             ;command $19
+dw CODE_00_1F2F                                             ;command $1A
+dw CODE_00_1E34                                             ;command $1B
+dw CODE_00_1F4E                                             ;command $1C
+dw CODE_00_1EE7                                             ;command $1D
+dw CODE_00_1F09                                             ;command $1E
+dw CODE_00_1E1C                                             ;command $1F
+dw CODE_00_1EF9                                             ;command $20
+dw CODE_00_1F28                                             ;command $21
+dw CODE_00_1E9D                                             ;command $22
+dw CODE_00_1E8F                                             ;command $23
+dw CODE_00_1E3E                                             ;command $24
+dw CODE_00_36F1                                             ;command $25
+dw CODE_00_1FDE                                             ;command $26
+dw CODE_00_1DFA                                             ;command $27
+dw CODE_00_1DB2                                             ;command $28
+dw CODE_00_1D4F                                             ;command $29
+dw CODE_00_1D3D                                             ;command $2A
+dw CODE_00_1D46                                             ;command $2B
+dw CODE_00_1D0A                                             ;command $2C
+dw CODE_00_1C74                                             ;command $2D
+dw CODE_00_1C66                                             ;command $2E
+dw CODE_00_1C5F                                             ;command $2F
+dw CODE_00_2033                                             ;command $30
+dw CODE_00_2043                                             ;command $31
+dw CODE_00_2036                                             ;command $32
+dw CODE_00_2046                                             ;command $33
+dw CODE_00_2027                                             ;command $34
+dw CODE_00_1C4D                                             ;command $35
+dw LOOP_00_1C1B                                             ;command $36
+dw CODE_00_21D5                                             ;command $37
+dw CODE_00_1B4B                                             ;command $38
+dw EntityCommand_PlaySFX_00_1C14                            ;command $39
 
+;commands $80-BF (just bit 7 enabled)
 CODE_00_1AFE:
 LD A, B
-AND $20
+AND $20                                                     ;bit 5 does....... something. i am great at charades
 LD [$DF6F], A
+
 LD A, B
 AND $1F
 ExecutePointersWithDestination CODE_00_2206
 
-dw CODE_00_221F
-dw CODE_00_2227
+dw CODE_00_221F                                             ;$80
+dw CODE_00_2227                                             ;$81
 dw CODE_00_223E
 dw CODE_00_2263
 dw CODE_00_228E
 dw CODE_00_249A
 dw CODE_00_2450
-dw CODE_00_2462
+dw CODE_00_2462                                             ;launchpad helicopter rope response
 dw CODE_00_2296
 dw CODE_00_2254
 dw CODE_00_2274
@@ -4572,7 +4747,7 @@ dw CODE_00_243A
 dw CODE_00_22E4
 dw CODE_00_22EC
 dw CODE_00_22C8
-dw CODE_00_229D
+dw CODE_00_229D                                             ;$98 - transylvania related
 dw CODE_00_238B
 dw CODE_00_23D8
 dw CODE_00_22BF
@@ -4582,11 +4757,13 @@ dw CODE_00_23C6
 dw CODE_00_2285
 
 CODE_00_1B4B:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 CP $0F
 JR C, CODE_00_1B5E
+
 CALL CODE_00_2524
 CALL CODE_00_1F57
+
 LD BC, DATA_00_30A5
 JP CODE_00_21FD
 
@@ -4634,9 +4811,11 @@ LD [BC], A
 LD HL, $C634
 LD A, [$C633]
 CALL CODE_00_3292
+
 LD HL, $DF6D
 CP [HL]
 JR Z, CODE_00_1BA6
+
 LD A, $82
 LD [BC], A
 
@@ -4645,6 +4824,7 @@ LD BC, $C611
 LD A, [BC]
 CP $20
 JR NC, CODE_00_1BB6
+
 LD A, [HL]
 SUB $08
 LD [HL], A
@@ -4669,19 +4849,19 @@ LD [$DF78], A
 RET
 
 CODE_00_1BC6:
-LD HL, $FF47
+LD HL, Register_BackgroundPalette
 LD A, [HL]
 CPL
 LD [HL], A
 RET
 
 CODE_00_1BCD:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [Player_State], A
 RET
 
 CODE_00_1BD4:
-CALL CODE_00_191E
+CALL LOOP_00_191E
 RET
 
 CODE_00_1BD8:
@@ -4691,7 +4871,7 @@ JP CODE_00_1A5E
 CODE_00_1BDE:
 LD A, [MoneyTotal]
 CP $10
-JP C, CODE_00_36D8
+JP C, InitializeEntityVariables_00_36D8
 
 CODE_00_1BE6:
 CALL CODE_00_1BFB
@@ -4699,6 +4879,7 @@ CP $07
 JR Z, CODE_00_1BE6
 SUB $03
 LD [$C615], A
+
 CALL CODE_00_1BFB
 CPL
 INC A
@@ -4721,17 +4902,17 @@ SLA A
 SLA A
 JP CODE_00_203D
 
-CODE_00_1C14:
-CALL CODE_00_329E
+EntityCommand_PlaySFX_00_1C14:
+CALL GetEntityDataArgument_00_329E
 CALL QueueSoundPrep_00_072B
 RET
 
-CODE_00_1C1B:
+LOOP_00_1C1B:
 CALL CODE_00_1C2B
 LD A, D
 SRL A
 CP $60
-JR NC, CODE_00_1C1B
+JR NC, LOOP_00_1C1B
 ADD A, $10
 LD [$C613], A
 RET
@@ -4741,28 +4922,32 @@ LD HL, $DF79
 LD A, [$DF4F]
 ADD A, [HL]
 LD [HL], A
+
 LD HL, $DF79
 INC [HL]
+
 LD B, [HL]
 SLA A
 LD C, A
+
 LD A, [$DF7A]
 LD HL, $DF7B
 ADD A, [HL]
 ADD A, C
 LD [$DF7A], A
+
 LD D, A
 ADD A, [HL]
 ADD A, B
 LD [$DF7B], A
 RET
 
-
 CODE_00_1C4D:
 LD HL, $C611
 LD A, [HL]
 AND $FE
 LD [HL], A
+
 LD A, [$C615]
 BIT 7, A
 RET Z
@@ -4772,7 +4957,7 @@ DEC [HL]
 RET
 
 CODE_00_1C5F:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 CALL CODE_00_07B6
 RET
 
@@ -4788,12 +4973,16 @@ CODE_00_1C74:
 LD BC, $0000
 LD A, $08
 CALL CODE_00_1CE8
+
 LD A, $04
 CALL CODE_00_1CE8
+
 LD A, $02
 CALL CODE_00_1CE8
+
 LD A, $01
 CALL CODE_00_1CE8
+
 XOR A
 CP C
 JR NZ, CODE_00_1CA6
@@ -4802,7 +4991,7 @@ LD HL, DATA_00_1CFF
 LD A, [$C608]
 AND A
 JR NZ, CODE_00_1C9B
-LD HL, $1CF4
+LD HL, DATA_00_1CF4
 
 CODE_00_1C9B:
 LD A, [$DF74]
@@ -4822,13 +5011,16 @@ LD HL, DATA_00_1CF4
 LD A, [$C608]
 AND A
 JR Z, CODE_00_1CB6
-LD HL, $1CFF
+
+LD HL, DATA_00_1CFF
 
 CODE_00_1CB6:
 ADD HL, BC
 CALL CODE_00_1CC6
+
 LD [$C615], A
 CALL CODE_00_1CCF
+
 LD [$C616], A
 JP CODE_00_2115
 
@@ -4916,53 +5108,59 @@ db $80
 
 db $51,$50,$20
 
+;a command to generate screen shaking and its effects
 CODE_00_1D0A:
-LD A, [$DF71]
-AND A
-JR NZ, CODE_00_1D19
-LD A, $20
-LD [$DF71], A
+LD A, [ScreenShakeTimer]                                    ;check if timer is set
+AND A                                                       ;
+JR NZ, CODE_00_1D19                                         ;
+
+LD A, $20                                                   ;set timer
+LD [ScreenShakeTimer], A                                    ;
 
 CODE_00_1D15:
 CALL CODE_00_32B0
 RET
 
-
 CODE_00_1D19:
-CP $01
-JR NZ, CODE_00_1D22
-XOR A
-LD [$DF71], A
-RET
+CP $01                                                      ;check if ran out
+JR NZ, CODE_00_1D22                                         ;
+
+XOR A                                                       ;
+LD [ScreenShakeTimer], A                                    ;
+RET                                                         ;
 
 CODE_00_1D22:
-LD HL, $DF71
-DEC [HL]
+LD HL, ScreenShakeTimer                                     ;
+DEC [HL]                                                    ;decrement timer
+
 LD A, [$C201]
 CP $58
-JR C, CODE_00_1D15
-LD A, [Player_State]
-CP $08
-JR Z, CODE_00_1D15
-XOR A
-LD [Player_PogoFlag], A
-LD [Player_State], A
-JR CODE_00_1D15
+JR C, CODE_00_1D15                                          ;check if player is grounded (hardcoded y-pos check)
+
+LD A, [Player_State]                                        ;if player is dead, keep them dead
+CP Player_State_Dead                                        ;
+JR Z, CODE_00_1D15                                          ;
+
+XOR A                                                       ;
+LD [Player_PogoFlag], A                                     ;
+LD [Player_State], A                                        ;player cannot jump or pogo while shake effect is applied
+JR CODE_00_1D15                                             ;
 
 CODE_00_1D3D:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [$C613], A
 JP CODE_00_1A5E
 
 CODE_00_1D46:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [$C611], A
 JP CODE_00_1A5E
 
 CODE_00_1D4F:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 CP $FF
 JR Z, CODE_00_1D66
+
 LD B, A
 LD A, [$C603]
 LDH [$FF8E], A
@@ -4979,7 +5177,7 @@ RET
 CODE_00_1D66:
 LD A, [$C613]
 CP $B0
-JP NC, CODE_00_36D8
+JP NC, InitializeEntityVariables_00_36D8
 
 LD E, $08                                                   ;block gets destroyed
 
@@ -5020,22 +5218,24 @@ LDH [$FF8D], A
 LD C, A
 CALL CODE_00_07E4
 CP $06
-JP NC, CODE_00_36D8
+JP NC, InitializeEntityVariables_00_36D8
 CP $03
-JP C, CODE_00_36D8
+JP C, InitializeEntityVariables_00_36D8
 LD A, $9F
 JR CODE_00_1D62
 
 CODE_00_1DB2:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 BIT 7, A
 JR Z, CODE_00_1DBE
+
 LD HL, DATA_00_1DEE
 JR CODE_00_1DC5
 
 CODE_00_1DBE:
 BIT 6, A
 JR Z, CODE_00_1DCD
+
 LD HL, DATA_00_1DF4
 
 CODE_00_1DC5:
@@ -5061,10 +5261,10 @@ LD HL, $DF81
 SET 0, [HL]
 
 CODE_00_1DE2:
-LD A, $0F
+LD A, Player_State_Message
 LD [Player_State], A
 
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD [$DF7C], A
 RET
 
@@ -5094,7 +5294,8 @@ OR L
 LD L, A
 LD A, [HL]
 AND A
-JP Z, CODE_00_36D8
+JP Z, InitializeEntityVariables_00_36D8
+
 LD HL, $C301
 LD A, [$C60A]
 OR L
@@ -5108,12 +5309,15 @@ LD [$C609], A
 RET
 
 CODE_00_1E1C:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [$C61E], A
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E
 LD [$C61F], A
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E
 LD [$C61D], A
+
 LD HL, $C612
 SET 3, [HL]
 RET
@@ -5121,21 +5325,24 @@ RET
 CODE_00_1E34:
 XOR A
 LD [$DF66], A
+
 LD A, $80
 LD [$DF54], A
 RET
 
 CODE_00_1E3E:
 LD A, [Player_State]
-CP $02
+CP Player_State_Pogo
 JR NZ, CODE_00_1E5A
+
 CALL CODE_00_1E77
 CP $1E
 JP NC, CODE_00_1E5A
 CALL CODE_00_1E7F
 JP NC, CODE_00_1E5A
-LD C, $FE
-LD B, $2E
+
+LD C, LOW(DATA_00_2EFE)
+LD B, HIGH(DATA_00_2EFE)
 JP CODE_00_21FD
 
 CODE_00_1E5A:
@@ -5147,8 +5354,9 @@ CP $09
 JR NC, CODE_00_1E74
 CALL CODE_00_1E7F
 JR NC, CODE_00_1E74
-LD C, $02
-LD B, $2F
+
+LD C, LOW(DATA_00_2F02)
+LD B, HIGH(DATA_00_2F02)
 JP CODE_00_21FD
 
 CODE_00_1E74:
@@ -5177,7 +5385,9 @@ CODE_00_1E8F:
 LDH A, [$FF96]
 AND A
 JP NZ, CODE_00_1EDE
+
 CALL CODE_00_32B0
+
 LD A, $02
 JP CODE_00_1A75
 
@@ -5185,23 +5395,27 @@ CODE_00_1E9D:
 LD A, [$CA09]
 AND A
 JP Z, CODE_00_32B0
+
 LD A, [$C603]
 LD B, A
 LD A, [$CA0B]
 CP B
 JP NZ, CODE_00_32B0
+
 LD A, [$C601]
 LD B, A
 LD A, [$CA0A]
 CP B
 JP NZ, CODE_00_32B0
+
 LD A, [$CA09]
 BIT 2, A
 JR NZ, CODE_00_1ED0
 BIT 0, A
 JR Z, CODE_00_1ECB
-LD C, $7E
-LD B, $31
+
+LD C, LOW(DATA_00_317E)
+LD B, HIGH(DATA_00_317E)
 JR CODE_00_1ED4
 
 CODE_00_1ECB:
@@ -5209,15 +5423,14 @@ BIT 1, A
 JP Z, CODE_00_32B0
 
 CODE_00_1ED0:
-LD C, $71
-LD B, $31
+LD C, LOW(DATA_00_3171)
+LD B, HIGH(DATA_00_3171)
 
 CODE_00_1ED4:
 XOR A
 LD [$CA09], A
 CALL CODE_00_1EDE
 JP CODE_00_21DB
-
 
 CODE_00_1EDE:
 LD H, $C5
@@ -5230,18 +5443,21 @@ CODE_00_1EE7:
 LD A, $04
 LD [$C610], A
 CALL CODE_00_35E5
+
 LD A, $C0
 LD [$C612], A
+
 LD E, $10
 JP CODE_00_1EFD
 
 CODE_00_1EF9:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD E, A
 
 CODE_00_1EFD:
 LD A, [$C603]
 LD B, A
+
 LD A, [$C601]
 LD C, A
 CALL CODE_00_07D6
@@ -5252,7 +5468,8 @@ SetBankAndBackup 2
 LD B, $0C
 LD C, $02
 CALL CODE_00_38E7
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
+
 LD B, A
 LD C, $03
 CALL CODE_00_38E7
@@ -5260,14 +5477,15 @@ SetBankAndBackup 1
 RET
 
 CODE_00_1F28:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [$C602], A
 RET
 
 CODE_00_1F2F:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 BIT 4, A
 JR Z, CODE_00_1F4A
+
 PUSH AF
 CALL CODE_00_327B
 LD HL, $C61D
@@ -5288,72 +5506,87 @@ LD [$C612], A
 RET
 
 CODE_00_1F4E:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD [$C614], A
 JP CODE_00_1A5E
 
 CODE_00_1F57:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 LD B, A
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E
 LD C, A
 
 CODE_00_1F5F:
 LD A, [$C613]
 LD D, A
+
 LD A, [$C611]
 LD E, A
+
 LD A, [$C615]
 LDH [$FF94], A
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 PUSH AF
 LD A, $F0
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 
-CODE_00_1F75:
-LD A, [$C1A2]
+LOOP_00_1F75:
+LD A, [CurrentEntityRAMOffset]
 SUB $10
 JR Z, CODE_00_1FCA
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
+
 LD HL, $C200
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD A, [HL]
 AND A
-JR NZ, CODE_00_1F75
+JR NZ, LOOP_00_1F75
+
 LD HL, $C200
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 LD A, $02
 LD [HL], A
+
 LD HL, $C20E
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD A, B
 LD [HL+], A
 LD [HL], C
+
 LD HL, $C303
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD [HL], D
 LD HL, $C301
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 LD [HL], E
+
 LD HL, $C305
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LDH A, [$FF94]
 LD [HL], A
+
 LD HL, $C20A
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 POP AF
 LD [HL], A
 PUSH AF
 LD HL, $C302
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD A, $80
 LD [HL], A
-LD A, [$C1A2]
+
+LD A, [CurrentEntityRAMOffset]
 LD [$C60B], A
 
 CODE_00_1FCA:
 POP AF
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 RET
 
 CODE_00_1FCF:
@@ -5373,14 +5606,15 @@ BIT 7, A
 JR Z, CODE_00_2015
 JR CODE_00_200E
 
-
 CODE_00_1FE7:
 LD A, [$C612]
 BIT 4, A
 JP NZ, CODE_00_2000
+
 LD A, [$C603]
 CP $D1
 JR C, CODE_00_1FF8
+
 LD A, $01
 
 CODE_00_1FF8:
@@ -5435,7 +5669,7 @@ LD A, $01
 JR CODE_00_203D
 
 CODE_00_203A:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 
 CODE_00_203D:
 LD [$C615], A
@@ -5450,7 +5684,7 @@ LD A, $01
 JR CODE_00_204D
 
 CODE_00_204A:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 
 CODE_00_204D:
 LD [$C616], A
@@ -5461,6 +5695,7 @@ LD HL, $C61C
 LD A, [HL]
 CP $1E
 JR C, CODE_00_205D
+
 XOR A
 LD [HL], A
 
@@ -5470,6 +5705,7 @@ LD B, $00
 LD C, A
 LD HL, DATA_00_206F
 ADD HL, BC
+
 LD A, [HL]
 CPL
 INC A
@@ -5491,15 +5727,18 @@ LD HL, $C61C
 LD A, [HL]
 CP $0C
 JR C, CODE_00_2097
+
 XOR A
 LD [HL], A
 
 CODE_00_2097:
 INC [HL]
+
 LD B, $00
 LD C, A
 LD HL, DATA_00_2081
 ADD HL, BC
+
 LD A, [HL]
 LD [$C616], A
 JP CODE_00_2158
@@ -5509,11 +5748,13 @@ LD HL, $C61C
 LD A, [HL]
 CP $0C
 JR C, CODE_00_20B0
+
 XOR A
 LD [HL], A
 
 CODE_00_20B0:
 INC [HL]
+
 LD B, $00
 LD C, A
 LD HL, DATA_00_2081
@@ -5527,6 +5768,7 @@ LD HL, $C61C
 LD A, [HL]
 CP $30
 JR C, CODE_00_20C9
+
 XOR A
 LD [HL], A
 
@@ -5539,6 +5781,7 @@ ADD HL, BC
 LD A, [$C615]
 BIT 7, A
 JR Z, CODE_00_20DD
+
 LD A, [HL]
 CPL
 INC A
@@ -5560,7 +5803,6 @@ db $00,$FF,$FF,$FF,$FE,$FE,$FE,$FD
 db $FD,$FD,$FD,$FD,$FE,$FE,$FF,$FF
 db $FF,$00,$00,$00,$00,$01,$03,$03
 
-
 CODE_00_2115:
 CALL CODE_00_212B
 
@@ -5572,7 +5814,7 @@ ADD A, B
 LD [$C613], A
 AND $F8
 CP $C8
-JP Z, CODE_00_36D8
+JP Z, InitializeEntityVariables_00_36D8
 RET
 
 CODE_00_212B:
@@ -5584,17 +5826,20 @@ LD A, [$C611]
 ADD A, B
 LD [$C611], A
 CP $B1
-JP NC, CODE_00_36D8
+JP NC, InitializeEntityVariables_00_36D8
 RET
 
 CODE_00_213C:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
+
 LD [$DF70], A
 BIT 0, A
 CALL NZ, CODE_00_215B
+
 LD A, [$DF70]
 BIT 1, A
 CALL NZ, CODE_00_2171
+
 LD A, [$DF70]
 BIT 3, A
 CALL NZ, CODE_00_212B
@@ -5607,9 +5852,9 @@ CODE_00_215B:
 LD A, [$C615]
 AND A
 RET Z
-
 BIT 7, A
 JR NZ, CODE_00_2168
+
 LD A, $08
 JR CODE_00_216A
 
@@ -5625,9 +5870,9 @@ CODE_00_2171:
 LD A, [$C616]
 CP $00
 RET Z
-
 BIT 7, A
 JR Z, CODE_00_2184
+
 LD A, $01
 CALL CODE_00_09FE
 JR NC, CODE_00_212B
@@ -5636,6 +5881,7 @@ JR CODE_00_2193
 CODE_00_2184:
 LD A, $02
 CALL CODE_00_09FE
+
 JR NC, CODE_00_212B
 LD A, [$C611]
 AND $F8
@@ -5667,7 +5913,8 @@ LD C, $01
 
 CODE_00_21AF:
 LD B, $00
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
+
 LD HL, $C61A
 ADD HL, BC
 LD [HL], A
@@ -5686,21 +5933,23 @@ LD HL, $C61A
 ADD HL, BC
 DEC [HL]
 JP NZ, CODE_00_21FA
-CALL CODE_00_329E
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E
+CALL GetEntityDataArgument_00_329E
 JP CODE_00_1A5E
 
 CODE_00_21D5:
 CALL CODE_00_2521
 
 CODE_00_21D8:
-CALL CODE_00_21F1
+CALL GetEntityDataPointerViaArgument_00_21F1
 
 CODE_00_21DB:
 LD HL, $C60E
 LD A, [HL+]
 LD E, A
 LD D, [HL]
+
 LD HL, $C618
 LD A, E
 LD [HL+], A
@@ -5715,16 +5964,19 @@ LD B, [HL]
 JR CODE_00_21FD
 
 ;get a subpointer
-CODE_00_21F1:
-CALL CODE_00_329E
+;output BC - data pointer
+GetEntityDataPointerViaArgument_00_21F1:
+CALL GetEntityDataArgument_00_329E
 LD C, A
-CALL CODE_00_329E
+
+CALL GetEntityDataArgument_00_329E
 LD B, A
 RET
 
 CODE_00_21FA:
-CALL CODE_00_21F1
+CALL GetEntityDataPointerViaArgument_00_21F1
 
+;entity data pointer jump. C - low byte, B - high byte
 CODE_00_21FD:
 LD HL, $C60E
 LD A, C
@@ -5738,8 +5990,8 @@ AND A
 JR NZ, CODE_00_221C
 
 CODE_00_220C:
-CALL CODE_00_329E
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
+CALL GetEntityDataArgument_00_329E
 JP CODE_00_1A5E
 
 CODE_00_2215:
@@ -5762,18 +6014,17 @@ CODE_00_2227:
 LD A, [$C615]
 BIT 7, A
 JR NZ, CODE_00_2236
+
 LD A, $08
 CALL CODE_00_09FE
 JR C, CODE_00_2215
 RET
-
 
 CODE_00_2236:
 LD A, $04
 CALL CODE_00_09FE
 JR C, CODE_00_2215
 RET
-
 
 CODE_00_223E:
 LD A, [$C203]
@@ -5782,10 +6033,10 @@ LD A, $03
 LD [$DF7F], A
 CALL CODE_00_357E
 JR NC, CODE_00_2215
+
 CALL CODE_00_3590
 JR NC, CODE_00_2215
 RET
-
 
 CODE_00_2254:
 LD A, [$C601]
@@ -5796,7 +6047,6 @@ SUB B
 CP $04
 JR C, CODE_00_2215
 RET
-
 
 CODE_00_2263:
 LD A, [$C203]
@@ -5863,7 +6113,6 @@ CP [HL]
 JP C, CODE_00_2215
 RET
 
-
 CODE_00_22B6:
 LD A, [$C608]
 BIT 5, A
@@ -5876,7 +6125,6 @@ LD A, [$C601]
 CP $A0
 JP NC, CODE_00_2215
 RET
-
 
 CODE_00_22C8:
 LD HL, $C601
@@ -5891,20 +6139,17 @@ CP [HL]
 JP C, CODE_00_2215
 RET
 
-
 CODE_00_22DE:
 POP AF
 CP [HL]
 JP NC, CODE_00_2215
 RET
 
-
 CODE_00_22E4:
 LD A, [$DF76]
 AND A
 JP NZ, CODE_00_2215
 RET
-
 
 CODE_00_22EC:
 LD A, [$C631]
@@ -5934,7 +6179,6 @@ CALL CODE_00_3409
 JP NZ, CODE_00_2215
 RET
 
-
 CODE_00_2317:
 LD A, [CurrentLand]
 AND A
@@ -5954,8 +6198,9 @@ AND A
 JR NZ, CODE_00_2355
 
 CODE_00_232E:
-LD A, $0D
+LD A, Player_State_EnteringBossArena
 LD [Player_State], A
+
 LD BC, $0000
 
 CODE_00_2336:
@@ -5964,7 +6209,7 @@ ADD A, C
 AND A
 JP Z, CODE_00_2215
 LD C, A
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 CP C
 JR Z, CODE_00_2336
 LD HL, $C200
@@ -5974,7 +6219,7 @@ LD E, L
 LD HL, $C300
 ADD HL, BC
 PUSH BC
-CALL CODE_00_36E7
+CALL LOOP_00_36E7
 POP BC
 JR CODE_00_2336
 
@@ -6009,7 +6254,6 @@ SUB [HL]
 CP $21
 RET NC
 
-
 CODE_00_2380:
 CALL CODE_00_1EDE
 LD A, $04
@@ -6040,7 +6284,7 @@ RET NC
 
 LD B, $18
 LD A, [CurrentLand]
-CP $01                                                      ;check if were in transylvania
+CP CurrentLand_Transylvania                                 ;check if were in transylvania
 JR NZ, CODE_00_23B4
 LD B, $30
 
@@ -6111,7 +6355,7 @@ RET
 CODE_00_240E:
 LD A, [CurrentLand]
 AND $03
-CP $01                                          ;check if in either transylvania or... transylvania. for the final boss battle.
+CP CurrentLand_Transylvania                                 ;check if in either transylvania or... transylvania. for the final boss battle.
 RET NZ
 
 LD HL, $DF81
@@ -6164,16 +6408,17 @@ LDH A, [$FF96]
 AND A
 RET Z
 
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD [$DF67], A
-LD A, $0B
+
+LD A, Player_State_MineCart
 LD [Player_State], A
 JP CODE_00_2215
 
 CODE_00_2462:
-LDH A, [JoypadInputHolding]
-BitA JoypadInput_Up
-RET Z
+LDH A, [JoypadInputHolding]                                 ;check if player held up
+BitTest JoypadInput_Up, A                                   ;
+RET Z                                                       ;
 
 LD A, [$C203]
 LD B, A
@@ -6187,7 +6432,6 @@ LD A, B
 SUB C
 CP $08
 RET NC
-
 
 CODE_00_247B:
 LD A, [$C201]
@@ -6203,11 +6447,12 @@ CP $18
 RET NC
 
 CODE_00_248E:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]                              ;player will now be attached to launchpad's rope
 LD [$DF67], A
-LD A, $0A
-LD [Player_State], A
-RET
+
+LD A, Player_State_ClimbingEntity                           ;
+LD [Player_State], A                                        ;
+RET                                                         ;
 
 CODE_00_249A:
 CALL CODE_00_24CE
@@ -6246,7 +6491,7 @@ CODE_00_24CE:
 LD DE, $0010
 
 CODE_00_24D1:
-LD HL, $C1A2
+LD HL, CurrentEntityRAMOffset
 LD A, E
 CP [HL]
 JR Z, CODE_00_2506
@@ -6260,8 +6505,10 @@ ADD HL, DE
 LD A, [HL]
 LD B, A
 LD A, [$C613]
+
 CALL CODE_00_2512
 JR C, CODE_00_24F3
+
 CALL CODE_00_2516
 JR NC, CODE_00_2506
 
@@ -6271,8 +6518,10 @@ ADD HL, DE
 LD A, [HL]
 LD B, A
 LD A, [$C611]
+
 CALL CODE_00_2512
 JR C, CODE_00_250F
+
 CALL CODE_00_2516
 JR C, CODE_00_250F
 
@@ -6294,7 +6543,6 @@ LD C, A
 SUB B
 JR CODE_00_2518
 
-
 CODE_00_2516:
 LD A, B
 SUB C
@@ -6308,7 +6556,7 @@ CALL CODE_00_2521
 JP CODE_00_1A5E
 
 CODE_00_2521:
-CALL CODE_00_329E
+CALL GetEntityDataArgument_00_329E
 
 CODE_00_2524:
 LD [$C610], A
@@ -6326,766 +6574,7 @@ CODE_00_2531:
 LD [$C600], A
 RET
 
-;i believe these are entity data.
-;format currently unknown
-DATA_00_2535:
-db $34,$37,$3E,$40,$25,$37,$3F,$40
-db $25,$E5,$36,$12,$04,$08,$0E,$0F
-db $38,$02,$81,$4E,$25,$14,$42,$25
-db $11,$05,$11
-
-DATA_00_2550:
-db $1A,$10,$21,$01,$37
-db $3E,$63,$31,$34,$37,$3F,$63,$25
-db $37,$3E,$63,$25,$E5,$59,$12,$04
-db $08,$0F,$81,$71,$25,$0E,$08,$0F
-db $14,$65,$25,$11,$A0,$6A,$25,$03
-db $FA,$E5,$63
-
-DATA_00_2578:
-db $1A,$06,$10,$46,$31,$60
-
-DATA_00_257E:
-db $16,$40,$1A,$02,$30,$08,$08
-db $0E,$0F,$A0,$82,$25,$31,$32,$05
-db $37,$41,$9F,$25,$37,$42,$9F,$25
-db $37,$43,$9F,$25,$37,$40,$9F,$25
-db $E5,$8D,$39,$13,$12,$03,$08,$38
-db $02,$A0,$82,$25,$08,$81,$B2,$25
-db $08,$14,$A3,$25,$11,$05,$11
-
-DATA_00_25B4:
-db $1A
-db $10,$21,$02,$1C,$34,$81,$3B,$31
-db $31,$34,$17,$13,$02,$37,$44,$63
-db $25,$37,$45,$63,$25,$37,$46,$63
-db $25,$37,$45,$63,$25,$15,$C2,$25
-db $81,$C0,$25,$16,$6A,$58,$19,$E3
-db $25,$16,$6B,$60,$E5,$C0,$1A,$02
-db $39,$0C,$16,$36,$26,$08,$08,$08
-db $08,$A1,$EA,$25,$00
-
-DATA_00_25F2:
-db $1A,$22,$21
-db $02,$1C,$40,$34,$37,$2B,$63,$31
-db $16,$2B,$48,$A2,$FD,$25,$16,$31
-db $4C,$16,$32,$48,$84,$0E,$26,$E5
-db $FD,$39,$0A,$16,$32,$05,$7F,$39
-db $0B,$38,$07,$1B,$16,$47,$4C,$1A
-db $22,$E5,$FD
-
-DATA_00_2620:
-db $1C,$50,$21,$02,$38
-db $02,$34,$02,$04,$9C,$2E,$26,$02
-db $08,$07,$37,$5B,$63,$31,$BC,$39
-db $26,$02,$F8,$07,$12,$06,$16,$5B
-db $48,$16,$5C,$48,$14,$3B,$26,$BC
-db $4A,$26,$02,$08,$07,$16,$34,$39
-db $14,$12,$02,$16,$34,$4C,$16,$35
-db $4C,$14,$50,$26,$E6,$33,$16,$8C
-db $44,$27,$E6,$5D
-
-DATA_00_2661:
-db $1C,$30,$21,$03
-db $19,$5B,$26,$16,$6C,$50,$83,$76
-db $26,$16,$6D,$50,$83,$76,$26,$E6
-db $68,$03,$02,$10,$8D,$26,$03,$FE
-db $10,$8D,$26,$12,$04,$16,$6C,$50
-db $16,$6D,$50,$14,$82,$26,$E6,$68
-db $12,$02,$16,$6C,$07,$07,$0F,$07
-db $07,$0F,$07,$07,$0F,$16,$6D,$07
-db $07,$0F,$07,$07,$0F,$07,$07,$0F
-db $14,$8F,$26,$11
-
-DATA_00_26A9:
-db $1A,$10,$21,$01
-db $1C,$22,$34,$17,$16,$1E,$0B,$0F
-db $07,$39,$15,$16,$1A,$0B,$0F,$07
-db $39,$15,$E6,$B1
-
-DATA_00_26C1:
-db $21,$01,$16,$22
-db $32,$26,$12,$02,$37,$22,$D8,$26
-db $37,$23,$D8,$26,$14,$C9,$26,$43
-db $05,$E6,$C7,$13,$04,$07,$0F,$15
-db $DA,$26,$11
-
-DATA_00_26E0:
-db $21,$03,$37,$24,$46
-db $31,$03,$02,$37,$37,$FC,$26,$37
-db $38,$FC,$26,$32,$04,$37,$37,$07
-db $27,$37,$38,$07,$27,$E6,$F2,$13
-db $04,$08,$0F,$0F,$08,$0F,$15,$FE
-db $26,$11,$13,$04,$0C,$0F,$08,$0F
-db $82,$15,$27,$15,$09,$27,$31,$11
-db $16,$24,$30,$0E,$0F,$08,$0F,$A0
-db $15,$27,$13,$04,$16,$39,$48,$16
-db $3A,$48,$15,$21,$27,$03,$FE,$37
-db $37,$FC,$26,$37,$38,$FC,$26,$31
-db $E6,$F0
-
-DATA_00_2737:
-db $1A,$00,$18,$2B,$89,$03
-db $FA,$10,$41,$31,$48,$17,$1F,$7B
-db $27,$01,$37,$5D,$67,$27,$19,$86
-db $27,$10,$67,$27,$10,$67,$27,$48
-db $37,$48,$67,$27,$10,$67,$27
-
-;unknown
-db $10,$67,$27,$19,$86,$27,$10,$67
-db $27,$E7,$62
-
-db $12,$02,$07,$0F,$07,$0F,$9B,$80
-db $27,$07,$0F,$0E,$0F,$9B,$80,$27
-db $14,$69,$27,$11,$19,$80,$27,$F1
-db $4B,$7F,$7F,$7F,$7F
-
-;unknown
-db $E7,$37
-
-db $1A,$80,$2B,$62,$16,$1F,$4C,$16
-db $20,$46,$16,$21,$46,$00
-
-DATA_00_2794:
-db $1F,$F0
-db $27,$01,$21,$02,$1C,$30,$03,$FA
-db $07,$31,$37,$25,$AA,$27,$37,$26
-db $AA,$27,$E7,$A0,$48,$83,$AF,$27
-db $11,$32,$26,$12,$02,$37,$25,$E0
-db $27,$37,$26,$E0,$27,$14,$B3,$27
-db $19,$E9,$27,$16,$2C,$03,$FC,$12
-db $04,$10,$D9,$27,$14,$C7,$27,$16
-db $27,$10,$D9,$27,$A0,$CF,$27,$05
-db $31,$E7,$B1,$09,$08,$09,$08,$0E
-db $0F,$11,$13,$04,$07,$0F,$07,$15
-db $E2,$27,$11,$03,$10,$07,$16,$1B
-db $4C,$00,$16,$2C,$F1,$4B
-
-DATA_00_27F4:
-db $21,$04
-db $1C,$44,$48,$37,$79,$63,$31,$44
-db $AA,$FD,$27,$34,$37,$79,$0C,$28
-db $37,$6E,$0C,$28,$E8,$02,$13,$08
-db $0E,$AA,$2E,$28,$08,$0F,$81,$1B
-db $28,$15,$0E,$28,$11,$16,$49,$48
-db $16,$5E,$48,$19,$35,$28,$16,$4A
-db $48,$16,$7A,$48,$16,$63,$48,$11
-db $05,$0E,$08,$08,$0F,$E8,$2F,$1A
-db $80,$29,$FF,$16,$16,$07,$07,$EF
-db $25
-
-DATA_00_283F:
-db $1A,$10,$21,$03,$60,$37,$6F
-db $63,$31,$34,$16,$6F,$03,$FC,$08
-db $09,$01,$0F,$08,$0E,$08,$A0,$4D
-db $28,$16,$4B,$44,$E8,$49
-
-DATA_00_285C:
-db $37,$19
-db $46,$31,$48,$0E,$07,$07,$0F,$07
-db $E8,$61
-
-DATA_00_2868:
-db $21,$03,$48,$34,$37,$4D
-db $63,$31,$37,$4C,$63,$25,$37,$4D
-db $63,$25,$37,$4E,$63,$25,$37,$4D
-db $63,$25,$E8,$70
-
-DATA_00_2882:
-db $21,$02,$33,$12
-db $02,$37,$2D,$A3,$28,$37,$2E,$A3
-db $28,$14,$87,$28,$03,$FF,$12,$02
-db $37,$2D,$A3,$28,$37,$2E,$A3,$28
-db $14,$96,$28,$E8,$82,$07,$0F,$07
-db $0F,$07,$0F,$07,$0F,$11
-
-DATA_00_28AC:
-db $21,$02
-db $50,$37,$50,$63,$31,$34,$12,$04
-db $37,$4F,$C4,$28,$37,$50,$C4,$28
-db $14,$B6,$28,$05,$E8,$B4,$08,$0F
-db $08,$08,$0F,$08,$08,$0F,$08,$11
-
-DATA_00_28CE:
-db $21,$03,$31,$02,$02,$04,$05,$17
-db $37,$70,$1D,$29,$83,$E4,$28,$37
-db $71,$1D,$29,$A3,$D6,$28,$33,$09
-db $02,$A0,$E5,$28,$16,$51,$03,$FD
-db $08,$09,$02,$0F,$0E,$A0,$EE,$28
-db $81,$04,$29,$44,$39,$10,$16,$52
-db $44,$16,$72,$48,$E8,$EA,$03,$FF
-db $16,$71,$08,$81,$08,$29
-
-;unknown
-db $31,$37,$70,$1D,$29,$81,$04,$29
-db $37,$71,$1D,$29,$81,$04,$29,$E9
-db $0D
-
-db $08,$08,$0F,$08,$0F,$08,$08,$0F
-db $11
-
-DATA_00_2926:
-db $1A,$06,$16,$3B,$02,$FF,$38
-db $08,$12,$20,$08,$38,$02,$14,$30
-db $29,$E9,$2C
-
-DATA_00_2938:
-db $1A,$06,$32,$37,$3B
-db $46,$31,$08,$0F,$A1,$3F,$29,$30
-db $0F,$E9,$44
-
-DATA_00_2948:
-db $2B,$20,$10,$41,$31
-db $1A,$02,$39,$1A,$34,$33,$16,$53
-db $09,$08,$A9,$55,$29,$31,$0D,$0F
-db $07,$0F,$E9,$5B
-
-DATA_00_2961:
-db $1C,$30,$21,$02
-db $37,$3C,$63,$31,$34,$05,$1A,$80
-db $16,$3C,$7F,$60,$1A,$00,$05,$37
-db $56,$7E,$29,$37,$57,$7E,$29,$E9
-db $74,$12,$04,$08,$08,$0E,$81,$8A
-db $29,$14,$80,$29,$11,$16,$73,$19
-db $9A,$29,$03,$FD,$09,$02,$0E,$A0
-db $91,$29,$31,$E9,$6B,$29,$FF,$02
-db $F8,$07,$10,$5A,$31,$00
-
-DATA_00_29A3:
-db $21,$03
-db $1F,$F7,$29,$01,$19,$ED,$29,$2E
-db $10,$E1,$29,$32,$8E,$B6,$29,$02
-db $FF,$26,$37,$61,$D8,$29,$37,$62
-db $D8,$29,$37,$61,$D8,$29,$10,$E1
-db $29,$05,$37,$61,$D8,$29,$37,$62
-db $D8,$29,$37,$61,$D8,$29,$10,$E1
-db $29,$E9,$AD,$07,$07,$07,$07,$07
-db $07,$07,$07,$11,$12,$03,$16,$5F
-db $48,$16,$60,$48,$14,$E3,$29,$11
-db $03,$10,$07,$20,$01,$1A,$06,$16
-db $17,$24,$03,$08,$07,$41,$39,$16
-db $12,$04,$16,$54,$44,$16,$55,$44
-db $14,$FF,$29,$16,$33,$F1,$4B
-
-DATA_00_2A0C:
-db $1A
-db $06,$37,$7E,$63,$31,$37,$7B,$24
-db $2A,$37,$7C,$24,$2A,$37,$7D,$24
-db $2A,$37,$7E,$24,$2A,$EA,$12,$44
-db $86,$29,$2A,$11,$42,$38,$07,$37
-db $7B,$4B,$2A,$37,$7C,$4B,$2A,$37
-db $7D,$4B,$2A,$37,$7E,$4B,$2A,$EA
-db $2C,$30,$31,$0E,$08,$0F,$08,$08
-db $0F,$08,$08,$A0,$40,$2A,$02,$FF
-db $12,$04,$A0,$3E,$2A,$07,$14,$4F
-db $2A,$11,$19,$5C,$2A,$F1,$4B,$10
-db $6D,$2D,$1D,$22,$16,$0F,$EE,$3B
-
-DATA_00_2A65:
-db $10,$47,$2D,$1E,$0C,$2A,$18,$2B
-db $60,$1A,$00,$1F,$57,$2A,$04,$16
-db $67,$12,$08,$18,$42,$17,$42,$14
-db $78,$2A,$34,$03,$F9,$10,$93,$2A
-db $05,$12,$02,$16,$67,$48,$16,$68
-db $48,$14,$88,$2A,$EA,$7F,$0E,$08
-db $0F,$08,$0F,$81,$B2,$2A,$08,$0F
-db $09,$01,$A0,$93,$2A,$31,$2C,$12
-db $14,$08,$08,$0F,$08,$0F,$81,$B5
-db $2A,$14,$A6,$2A,$11,$05,$EA,$9B
-db $05,$EA,$AE,$19,$BD,$2A,$F1,$4B
-db $10,$6D,$2D,$1D,$22,$16,$10,$EE
-db $3B
-
-DATA_00_2AC6:
-db $98,$CC,$2C,$10,$47,$2D,$1E
-db $0D,$2A,$18,$2B,$68,$1A,$00,$1F
-db $B8,$2A,$04,$34,$17,$1A,$02,$10
-db $5A,$31,$34,$18,$48,$16,$5A,$12
-db $08,$18,$42,$17,$42,$14,$E6,$2A
-db $1A,$08,$03,$FF,$30,$12,$05,$37
-db $74,$47,$2B,$37,$75,$47,$2B,$14
-db $F4,$2A,$31,$34,$12,$08,$37,$74
-db $3A,$2B,$37,$75,$3A,$2B,$14,$03
-db $2B,$03,$01,$30,$08,$08,$A0,$11
-db $2B,$31,$34,$10,$5A,$31,$16,$5A
-db $7F,$60,$39,$0D,$19,$2C,$2B,$19
-db $31,$2B,$19,$33,$2B,$EA,$DA,$03
-db $FF,$30,$EB,$33,$03,$FF,$16,$2A
-db $1A,$02,$07,$EB,$37,$13,$04,$0C
-db $0F,$08,$0F,$81,$4E,$2B,$15,$3C
-db $2B,$11,$08,$08,$0F,$08,$08,$0F
-db $11,$05,$EB,$43,$19,$56,$2B,$F1
-db $4B,$10,$6D,$2D,$1D,$22,$16,$11
-db $EE,$3B
-
-DATA_00_2B5F:
-db $10,$47,$2D,$1E,$0D,$2A
-db $40,$2B,$68,$16,$69,$1A,$00,$1F
-db $51,$2B,$04,$32,$8E,$76,$2B,$02
-db $FF,$26,$16,$69,$17,$13,$02,$03
-db $FB,$12,$0B,$09,$02,$0F,$0E,$0F
-db $14,$80,$2B,$15,$7C,$2B,$16,$59
-db $03,$04,$08,$A0,$8F,$2B,$31,$1A
-db $02,$37,$58,$A0,$2B,$37,$59,$A0
-db $2B,$EB,$96,$2D,$2D,$2D,$2D,$2D
-db $2D,$8B,$AA,$2B,$11,$1A,$08,$EB
-db $70,$19,$B3,$2B,$F1,$4B,$10,$6D
-db $2D,$1D,$22,$16,$12,$EE,$3B
-
-DATA_00_2BBC:
-db $10
-db $47,$2D,$1E,$0D,$1C,$45,$2A,$6C
-db $2B,$60,$1A,$00,$1F,$AE,$2B,$04
-db $02,$FF,$12,$04,$16,$80,$17,$48
-db $16,$81,$48,$14,$D1,$2B,$12,$02
-db $03,$FB,$16,$80,$48,$16,$81,$48
-db $16,$82,$10,$0F,$2C,$10,$0F,$2C
-db $0E,$EB,$E7,$39,$0E,$16,$81,$60
-db $14,$DD,$2B,$16,$80,$48,$16,$88
-db $50,$19,$1F,$2C,$19,$19,$2C,$19
-db $1C,$2C,$16,$80,$2C,$5F,$7F,$05
-db $EB,$DB,$07,$80,$F0,$2B,$07,$0F
-db $80,$F0,$2B,$11,$50,$EC,$1F,$70
-db $EC,$1F,$36,$1A,$02,$2B,$20,$16
-db $29,$33,$30,$07,$07,$07,$0F,$EC
-db $28,$19,$33,$2C,$F1,$4B,$10,$6D
-db $2D,$1D,$22,$16,$13,$EE,$3B
-
-DATA_00_2C3C:
-db $10
-db $47,$2D,$1E,$0E,$2B,$68,$1A,$00
-db $1F,$2E,$2C,$04,$2A,$3C,$17,$16
-db $76,$30,$12,$04,$33,$07,$47,$03
-db $FF,$07,$45,$14,$51,$2C,$31,$8E
-db $8A,$2C,$02,$FE,$8E,$66,$2C,$02
-db $02,$26,$31,$12,$03,$37,$77,$85
-db $2C,$37,$78,$85,$2C,$14,$6A,$2C
-db $05,$12,$03,$37,$77,$85,$2C,$37
-db $78,$85,$2C,$14,$78,$2C,$EC,$49
-db $07,$07,$07,$07,$11,$02,$FF,$8E
-db $90,$2C,$32,$26,$16,$87,$03,$FB
-db $10,$A9,$2C,$10,$A9,$2C,$09,$02
-db $80,$AE,$2C,$10,$A9,$2C,$10,$A9
-db $2C,$0E,$EC,$95,$08,$80,$AE,$2C
-db $11,$05,$03,$FC,$07,$10,$C3,$2C
-db $80,$49,$2C,$09,$01,$10,$C3,$2C
-db $80,$49,$2C,$0E,$EC,$B2,$80,$49
-db $2C,$08,$11,$38,$00,$F1,$4B
-
-DATA_00_2CCC:
-db $10
-db $47,$2D,$1E,$0E,$1C,$45,$2B,$2C
-db $1A,$00,$1F,$C8,$2C,$04,$36,$34
-db $16,$7F,$10,$F9,$2C,$19,$03,$2D
-db $1A,$08,$16,$89,$7F,$7F,$4F,$10
-db $F9,$2C,$1A,$80,$12,$7F,$18,$14
-db $F3,$2C,$EC,$DB,$12,$08,$18,$44
-db $17,$44,$14,$FB,$2C,$11,$1A,$00
-db $60,$34,$03,$01,$2B,$20,$37,$1C
-db $2C,$2D,$37,$1D,$2C,$2D,$ED,$0B
-db $03,$FF,$37,$1C,$37,$2D,$37,$1D
-db $37,$2D,$ED,$17,$31,$37,$1C,$42
-db $2D,$37,$1D,$42,$2D,$ED,$22,$12
-db $04,$09,$08,$97,$15,$2D,$14,$2E
-db $2D,$11,$12,$04,$07,$0F,$97,$21
-db $2D,$14,$39,$2D,$11,$0B,$41,$0B
-db $41,$11,$1A,$06,$18,$16,$08,$0F
-db $AF,$4C,$2D,$7F,$5F,$2A,$00,$19
-db $5F,$2D,$2A,$90,$19,$5F,$2D,$39
-db $47,$11,$1A,$80,$03,$10,$2B,$20
-db $12,$0A,$20,$01,$07,$14,$67,$2D
-db $1A,$80,$2A,$40,$2B,$70,$7F,$F1
-db $5A
-
-DATA_00_2D76:
-db $10,$90,$2D,$1A,$00,$10,$A0
-db $2D,$EE,$C9
-
-DATA_00_2D80:
-db $1A,$06,$10,$90,$2D
-db $10,$5A,$31,$16,$04,$10,$A0,$2D
-db $35,$EE,$79
-
-db $1A,$06,$38,$02,$02,$08,$03,$08
-db $07,$16,$28,$48,$AD,$9B,$2D,$11
-db $34,$03,$F8,$07,$31,$08,$0F,$80
-db $A5,$2D,$0E,$09,$02,$0F,$09,$02
-db $A0,$AA,$2D,$11
-
-DATA_00_2DB4:
-db $10,$DE,$2D,$E9,$4A
-
-DATA_00_2DB9:
-db $10,$DE,$2D,$30,$03,$E0,$07,$31
-db $E5,$F2
-
-DATA_00_2DC3:
-db $10,$DE,$2D,$30,$19,$D7
-db $2D,$4E,$8E,$3B,$31,$32,$19,$D7
-db $2D,$4E,$8E,$3B,$31,$05,$10,$5A
-db $31,$16,$01,$EE,$3C,$1A,$80,$48
-db $B9,$E0,$2D,$02,$08,$07,$11
-
-DATA_00_2DE8:
-db $10,$ED,$2D,$EE,$36,$1A,$06,$23
-db $F1,$5A
-
-DATA_00_2DF2:
-db $10
-db $ED,$2D
-db $EE,$69
-
-DATA_00_2DF7:
-db $10,$ED
-db $2D,$EE,$6F
-
-DATA_00_2DFC:
-db $10,$ED,$2D,$EE,$75
-
-DATA_00_2E01:
-db $10,$ED,$2D,$EE,$7B
-
-DATA_00_2E06:
-db $9F,$F7,$2D
-db $10,$ED,$2D,$EE,$84
-
-DATA_00_2E0E:
-db $10,$ED,$2D
-db $EE,$8A
-
-DATA_00_2E13:
-db $10,$ED,$2D,$EE,$67,$18
-db $16,$18,$EE,$2A,$18,$16,$01,$EE
-db $2A,$18,$16,$05,$EE,$2A,$18,$16
-db $03,$38,$0A,$03,$05,$07,$17,$30
-db $31,$EE,$4D
-
-DATA_00_2E34:
-db $1D,$22,$16,$18,$02
-db $04,$07,$30,$1A,$82,$03,$FD,$07
-db $08,$08,$0E,$08,$08,$0E,$08,$08
-db $0E,$08,$08,$0E,$1A,$03,$10,$62
-db $2E,$80,$5C,$2E,$0E,$10,$62,$2E
-db $A0,$4F,$2E,$0F,$8C,$5C,$2E,$EE
-db $D4,$80,$5C,$2E,$08,$11
-
-DATA_00_2E67:
-db $1D,$22,$16,$01,$EE,$3B
-
-DATA_00_2E6D:
-db $1D,$22,$16,$00,$EE,$3B
-
-DATA_00_2E73:
-db $1D,$22,$16,$05,$EE,$3B
-
-DATA_00_2E79:
-db $1D,$22,$16,$03,$EE,$3B
-
-DATA_00_2E7F:
-db $9F,$6D,$2E,$1D,$22,$16,$06,$EE,$3B
-
-DATA_00_2E88:
-db $1D,$22,$16,$02,$EE,$3B
-
-DATA_00_2E8E:
-db $9E,$3B,$31,$1D,$22,$16,$07,$EE,$3B
-
-DATA_00_2E97:
-db $93,$3B,$31,$1A,$01,$16,$0A,$7F,$EE,$9E
-
-DATA_00_2EA1:
-db $92,$3B,$31,$1D,$22,$16,$0C,$EE
-db $3B
-
-DATA_00_2EAA:
-db $92,$3B,$31,$1D,$22,$16,$0D,$EE
-db $3B
-
-DATA_00_2EB3:
-db $92,$3B,$31,$1D,$22,$16,$0B,$EE
-db $3B
-
-DATA_00_2EBC:
-db $94,$3B,$31,$1D,$22
-db $16,$0E,$EE,$3B,$16,$07,$48,$00
-
-DATA_00_2EC9:
-db $10
-dw DATA_00_315A
-db $00
-
-DATA_00_2ECD:
-db $10
-dw DATA_00_315A
-db $1A,$01
-db $16,$01
-db $7F,$7F,$12,$10,$18,$43,$17,$43
-db $14,$D8,$2E
-db $00
-
-DATA_00_2EE0:
-db $10
-dw DATA_00_315A
-db $1A,$01
-db $16,$03
-db $EE,$D4
-
-DATA_00_2EE9:
-db $16,$14,$02,$02,$04,$03,$FE,$81
-db $C9,$2E,$07,$85,$C5,$2E,$07,$80
-db $C9,$2E,$07,$EE,$F0,$20,$00,$EE
-db $C9,$20,$00,$48,$16,$17,$EF,$0B
-
-DATA_00_2F09:
-db $16,$15,$02,$02,$04,$03,$FD,$81
-db $C9,$2E,$85,$C5,$2E,$07,$07,$80
-db $C9,$2E,$85,$C5,$2E,$0E,$07,$EF
-db $10
-
-DATA_00_2F22:
-db $02,$02,$04,$16,$16,$31,$81
-db $C9,$2E,$0E,$A0,$C9,$2E,$08,$85
-db $C5,$2E,$08,$EF,$28
-
-DATA_00_2F36:
-db $1A,$80,$02
-db $01,$10,$44,$2F,$02,$FF,$10,$44
-db $2F,$EF,$38,$12,$0C,$16,$8A,$0A
-db $39,$12,$0F,$07,$16,$8B,$0A,$0F
-db $07,$16,$8A,$0A,$87,$0F,$07,$16
-db $8B,$0A,$0F,$07,$14,$46,$2F,$11
-
-DATA_00_2F61:
-db $9A,$3B,$31,$1A,$06,$37,$66,$3C
-db $31,$28,$10,$F1,$38
-
-DATA_00_2F6E:
-db $1A,$80,$13
-db $04,$12,$04,$10,$85,$2F,$14,$74
-db $2F,$19,$8C,$2F,$15,$72,$2F,$10
-db $85,$2F,$EF,$80,$16,$64,$50,$16
-db $65,$50,$11,$1A,$01,$39,$11,$02
-db $03,$8E,$97,$2F,$02,$FD,$43,$07
-db $8E,$97,$2F,$30,$2B,$20,$16,$05
-db $33,$07,$0F,$EF,$A2
-
-DATA_00_2FA6:
-db $1A,$80,$B3
-db $F9,$2F,$95,$F6,$2F,$2F,$0A,$48
-db $B6,$B0,$2F,$2A,$01,$32,$05,$05
-db $12,$04,$16,$84,$48,$16,$83,$48
-db $14,$BB,$2F,$19,$CA,$2F,$7F,$EF
-db $C7,$16,$08,$02,$03,$08,$A1,$CE
-db $2F,$03,$10,$02,$10,$07,$30,$2B
-db $50,$12,$04,$10,$5A,$31,$29,$D2
-db $07,$14,$DC,$2F,$02,$10,$07,$30
-db $2B,$50,$12,$04,$10,$5A,$31,$29
-db $D3,$07,$14,$ED,$2F,$2F,$0F,$00
-db $2F,$0A,$00
-
-DATA_00_2FFC:
-db $9E,$3B,$31,$2F,$00
-db $1A,$04,$1F,$0F,$30,$01,$03,$FE
-db $07,$31,$16,$3D,$F1,$38,$12,$04
-db $0E,$07,$07,$14,$11,$30,$0E,$08
-db $A0,$17,$30,$03,$FC,$07,$31,$02
-db $02,$26,$0E,$08,$A1,$23,$30,$28
-db $07,$48,$02,$18,$07,$2B,$60,$31
-db $10,$49,$30,$02,$10,$07,$10,$49
-db $30,$2B,$70,$02,$F0,$10,$49,$30
-db $07,$10,$49,$30,$2F,$05,$EE,$8E
-db $29,$00,$F1,$5A
-
-DATA_00_304D:
-db $90,$3B,$31,$1A,$06,$37,$2F,$63
-db $31,$10,$3C,$31,$28,$80,$F1,$38
-
-DATA_00_305D:
-db $91
-dw DATA_00_313B
-db $94
-dw DATA_00_313B
-db $2F,$14,$1A,$06,$37,$30
-db $63,$31,$10,$3C,$31,$28,$40,$F1
-db $38
-
-DATA_00_3072:
-db $1A,$06,$18,$37,$44,$3C,$31
-db $28,$0B,$00
-
-DATA_00_307C:
-db $32,$38,$0F,$81,$30
-db $7F,$05,$38,$10,$87,$30,$7F,$05
-db $38,$11,$8D,$30,$7F,$05,$38,$12
-db $93,$30,$7F,$05,$38,$13,$99,$30
-db $7F,$12,$0A,$48,$38,$05,$14,$9C
-db $30,$38,$00
-
-;unknown
-db $00
-
-DATA_00_30A5:
-db $03,$FC,$10,$D8,$29,$0E,$F0,$A7
-
-DATA_00_30AD:
-db $32,$26,$16,$8D,$7F,$19,$DF,$30
-db $13,$04,$30,$03,$FC,$12,$09,$07
-db $07,$07,$0E,$0F,$14,$BC,$30,$15
-db $B7,$30,$7F,$7F,$02,$FF,$31,$12
-db $60,$07,$14,$CE,$30,$30,$03,$FF
-db $12,$18,$07,$14,$D7,$30,$38,$00
-
-;unknown
-db $F1,$38
-
-db $2A,$44,$2B,$50,$19,$E9,$30,$44
-db $F0,$E3,$38,$09,$16,$00,$10,$85
-db $2C,$0E,$F0,$ED
-
-DATA_00_30F3:
-db $1A,$80,$17,$03
-db $FF,$16,$85,$28,$0C,$7F,$12,$26
-db $37,$86,$0D,$31,$37,$85,$0D,$31
-db $14,$FF,$30,$31,$F0,$FF,$13,$04
-db $38,$03,$0F,$15,$0F,$31,$11
-
-DATA_00_3116:
-db $1A
-db $06,$16,$04,$0F,$9D,$28,$31,$A8
-db $1A,$31,$38,$06,$10,$38,$00
-
-;unknown
-db $F1,$38
-
-db $38,$06,$10,$32,$12,$10,$07,$0F
-db $14,$2E,$31,$28,$0D,$7F,$38,$01
-db $7F,$F1,$38
-
-DATA_00_313B:
-db $00,$44,$A8,$3C,$31
-db $11,$44,$A3,$41,$31,$11,$44,$A2
-db $46,$31,$11,$17,$03,$FB,$32,$06
-db $0F,$39,$1F,$07,$0E,$0F,$F1,$53
-db $50,$25
-
-DATA_00_315A:
-db $39,$07,$16,$08,$48,$16
-db $09,$48,$11,$18,$80,$6F,$31,$03
-db $08,$09,$08,$A0,$69,$31,$31,$17
-db $11,$80,$80,$31,$31,$30,$0E,$08
-db $38,$04,$A0,$76,$31,$08,$F1,$5A
-db $02,$02,$04,$08,$08,$38,$04,$A0
-db $74,$31,$A1,$83,$31,$F1,$5A
-
-
-DATA_00_318F:
-db $10,$B6,$31,$1A,$06,$50,$29,$9F
-db $33
-db $12,$10,$07,$0F,$14,$9A,$31,$29
-db $DF,$18,$7F,$F1,$8F
-
-DATA_00_31A5:
-db $10,$B6,$31
-db $1A,$02,$52,$29,$9F,$0E,$08,$08
-db $0F,$80,$C9,$2E,$F1,$AD,$1A,$80
-db $16,$15,$18,$42,$A2,$BB,$31,$17
-db $11
-
-;are these pointers?
-POINTERS_00_31C1:
-dw DATA_00_2EC9
-dw DATA_00_2ECD
-dw DATA_00_2EE0
-dw DATA_00_2EE9
-dw DATA_00_2F09
-dw DATA_00_2F22
-dw DATA_00_313B                                             ;\unused
-dw DATA_00_313B                                             ;/
-dw DATA_00_31A5
-dw DATA_00_318F
-dw DATA_00_313B                                             ;\unused
-dw DATA_00_313B                                             ;|
-dw DATA_00_313B                                             ;/
-dw DATA_00_307C
-dw DATA_00_30AD
-dw DATA_00_30F3
-dw DATA_00_2DE8
-dw DATA_00_2DF2
-dw DATA_00_2DF7
-dw DATA_00_2DFC
-dw DATA_00_2E01
-dw DATA_00_2E06
-dw DATA_00_2E0E
-dw DATA_00_2E13
-dw DATA_00_2E34
-dw DATA_00_2E67
-dw DATA_00_2E6D
-dw DATA_00_2E73
-dw DATA_00_2E79
-dw DATA_00_2E7F
-dw DATA_00_2E88
-dw DATA_00_2E8E
-dw DATA_00_2E97
-dw DATA_00_2EA1
-dw DATA_00_2EAA
-dw DATA_00_2EB3
-dw DATA_00_2EBC
-dw DATA_00_2FA6
-dw DATA_00_2F61
-dw DATA_00_2FFC
-dw DATA_00_2D76
-dw DATA_00_2D80
-dw DATA_00_2DC3
-dw DATA_00_2DB9
-dw DATA_00_2DB4
-dw DATA_00_3072
-dw DATA_00_313B                                             ;\unused
-dw DATA_00_313B                                             ;/
-dw DATA_00_2550
-dw DATA_00_2578
-dw DATA_00_25B4
-dw DATA_00_25F2
-dw DATA_00_2620
-dw DATA_00_2661
-dw DATA_00_26A9
-dw DATA_00_2535
-dw DATA_00_26C1
-dw DATA_00_26E0
-dw DATA_00_2737
-dw DATA_00_257E
-dw DATA_00_2794
-dw DATA_00_27F4
-dw DATA_00_283F
-dw DATA_00_2868
-dw DATA_00_285C
-dw DATA_00_2882
-dw DATA_00_28AC
-dw DATA_00_28CE
-dw DATA_00_2938
-dw DATA_00_2926
-dw DATA_00_2948
-dw DATA_00_2961
-dw DATA_00_29A3
-dw DATA_00_2A0C
-dw DATA_00_313B                                             ;\unused
-dw DATA_00_313B                                             ;|
-dw DATA_00_313B                                             ;|
-dw DATA_00_313B                                             ;|
-dw DATA_00_313B                                             ;|
-dw DATA_00_313B                                             ;/
-dw DATA_00_2A65
-dw DATA_00_2AC6
-dw DATA_00_2B5F
-dw DATA_00_2BBC
-dw DATA_00_2C3C
-dw DATA_00_2CCC                                             ;unused (the pointer itself)
-dw DATA_00_3116
-dw DATA_00_313B                                             ;unused
-dw DATA_00_2F36
-dw DATA_00_304D
-dw DATA_00_2F6E
-dw DATA_00_313B                                             ;unused
-dw DATA_00_305D
+include "Data/EntityData.asm"
 
 CODE_00_327B:
 LD HL, $C632
@@ -7109,14 +6598,15 @@ OR [HL]
 SWAP A
 RET
 
-CODE_00_3298:
-LD A, [$C1A2]
-OR L
-LD L, A
-RET
+;input HL - base RAM address (in reality only needs L)
+GetCurrentEntityRAMOffset_00_3298:
+LD A, [CurrentEntityRAMOffset]                              ;base offset
+OR L                                                        ;logical L
+LD L, A                                                     ;resulting HL
+RET                                                         ;
 
 ;used to fetch the next byte from the current entity's data table
-CODE_00_329E:
+GetEntityDataArgument_00_329E:
 LD HL, $C60E                                                ;data table stored here
 LD A, L
 OR H
@@ -7126,6 +6616,7 @@ JR Z, LOOP_00_32A3                                          ;check if the pointe
 
 LD E, [HL]
 INC [HL]
+
 PUSH AF
 INC HL
 LD D, [HL]                                                  ;will get pointer
@@ -7135,7 +6626,7 @@ JR NZ, CODE_00_32AE
 INC [HL]
 
 CODE_00_32AE:
-LD A, [DE]
+LD A, [DE]                                                  ;get data byte
 RET
 
 CODE_00_32B0:
@@ -7153,16 +6644,20 @@ CODE_00_32BB:
 LD A, [$C614]
 AND A
 JR Z, CODE_00_32EC
+
 LD E, A
 LD A, [$C609]
 LD D, A
 CALL CODE_00_32F1
+
 LD A, [$C608]
 BIT 5, A
 JR NZ, CODE_00_32DC
+
 LD A, E
 AND $0F
 JR Z, CODE_00_32DC
+
 LD C, A
 LD A, D
 AND $0F
@@ -7277,7 +6772,7 @@ CODE_00_3369:
 CP $02
 JR NZ, CODE_00_337D
 
-LD A, $08
+LD A, SFX_ExtraLife
 CALL QueueSoundPrep_00_072B
 
 LD HL, PlayerLives
@@ -7330,14 +6825,17 @@ CP $0A
 JR NZ, CODE_00_33C4
 
 SET 0, [HL]
-LD A, $09
+
+LD A, $09                                                   ;found remote control message
 JR CODE_00_33F8
 
 CODE_00_33C4:
 CP $0B
 JR NZ, CODE_00_33CE
+
 SET 3, [HL]
-LD A, $0F
+
+LD A, $0F                                                   ;found key to the mines message
 JR CODE_00_33F8
 
 CODE_00_33CE:
@@ -7353,13 +6851,13 @@ SET 2, [HL]
 
 CODE_00_33DC:
 LD A, $0E
-LD [MessageQueue], A
+LD [MessageQueue], A                                        ;found legendary treasure message
 
-LD A, $0F
-LD [Player_State], A
+LD A, Player_State_Message                                  ;player frozen, do display message
+LD [Player_State], A                                        ;
 
-LD A, $21
-LDH [SFXQueue], A
+LD A, SFX_ItemJingle                                        ;
+LDH [SFXQueue], A                                           ;
 
 CODE_00_33EA:
 LD HL, LegendaryTreasureValue_00_0781+3
@@ -7368,22 +6866,24 @@ JP GiveMoney_00_333D
 CODE_00_33F0:
 CP $0E
 JR NZ, CODE_00_3404
+
 SET 4, [HL]
-LD A, $11
+
+LD A, $11                                                   ;found UFO key
 
 CODE_00_33F8:
-LD [MessageQueue], A
+LD [MessageQueue], A                                        ;
 
-LD A, $0F
-LD [Player_State], A
+LD A, Player_State_Message                                  ;
+LD [Player_State], A                                        ;
 
-LD A, $21
-LDH [SFXQueue], A
+LD A, SFX_ItemJingle                                        ;
+LDH [SFXQueue], A                                           ;
 
 CODE_00_3404:
-CALL CODE_00_36D8
-POP AF
-RET
+CALL InitializeEntityVariables_00_36D8                      ;
+POP AF                                                      ;
+RET                                                         ;
 
 CODE_00_3409:
 CP $0F
@@ -7399,6 +6899,7 @@ RET
 CODE_00_3414:
 XOR A
 LDH [$FF96], A
+
 LD A, [$C612]
 BIT 7, A
 RET NZ
@@ -7410,7 +6911,7 @@ JR Z, CODE_00_343C
 LD A, [$DF4F]
 AND $01
 LD B, A
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD C, A
 SWAP A
 AND $01
@@ -7476,16 +6977,17 @@ LD A, [$C610]
 CP $3B
 JR NZ, CODE_00_349B
 
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD [$DF67], A
 
-LD A, $0C
+LD A, Player_State_OnSpritePlatform                         ;should stay on top of the platform
 LD [Player_State], A
 RET
 
 CODE_00_349B:
 CP $15
 JR NZ, CODE_00_34A5
+
 LD A, $01
 LD [$DF65], A
 RET
@@ -7494,6 +6996,7 @@ CODE_00_34A5:
 LD A, [$C612]
 BIT 5, A
 JR Z, CODE_00_34E9
+
 LD A, [$DF54]
 AND A
 RET NZ
@@ -7503,7 +7006,7 @@ AND A
 RET NZ
 
 LD A, [Player_State]
-CP $08
+CP Player_State_Dead
 RET Z
 
 LD A, [$C203]
@@ -7518,7 +7021,7 @@ CODE_00_34C8:
 CP $10
 RET NC
 
-LD A, $09
+LD A, Player_State_StuckEntity
 LD [Player_State], A
 
 LD A, $01
@@ -7527,6 +7030,7 @@ LD [$DF66], A
 LD A, [$C613]
 SUB $04
 LD [$C203], A
+
 LD A, [$C611]
 SUB $14
 LD [$C201], A
@@ -7541,6 +7045,7 @@ JP Z, CODE_00_346B
 CODE_00_34F0:
 XOR A
 LD [$DF78], A
+
 LD A, [$C612]
 BIT 1, A
 RET NZ
@@ -7561,7 +7066,7 @@ DEC A
 SLA A
 LD B, $00
 LD C, A
-LD HL, DATA_00_356E
+LD HL, POINTERS_00_356E
 ADD HL, BC
 LD B, [HL]
 INC HL
@@ -7571,50 +7076,60 @@ CALL CODE_00_1F5F
 CODE_00_3524:
 LD A, $01
 LD [$DF65], A
+
 LD HL, $C60E
 LD A, [$C612]
 BIT 3, A
 JR NZ, CODE_00_3542
-LD [HL], $4B
+
+LD [HL], LOW(DATA_00_314B)
 INC HL
-LD [HL], $31
+LD [HL], HIGH(DATA_00_314B)
+
 LD HL, $C612
 SET 7, [HL]
+
 XOR A
 LD [$C60B], A
 RET
-
 
 CODE_00_3542:
 LD HL, $C61D
 DEC [HL]
 JR Z, CODE_00_3554
-LD A, [$C1A2]
+
+LD A, [CurrentEntityRAMOffset]
 LD [$DF72], A
+
 LD A, $80
 LD [$DF73], A
 RET
-
 
 CODE_00_3554:
 LD HL, $C60E
 LD A, [$C61E]
 LD [HL+], A
+
 LD A, [$C61F]
 LD [HL+], A
+
 XOR A
 LD [$DF72], A
 LD [$DF73], A
-LD [$DF71], A
+LD [ScreenShakeTimer], A
+
 LD A, $80
 JP CODE_00_1F4A
 
-DATA_00_356E:
-db $18,$2E,$1D,$2E,$22,$2E,$27,$2E
+POINTERS_00_356E:
+dw DATA_00_2E18
+dw DATA_00_2E1D
+dw DATA_00_2E22
+dw DATA_00_2E27
 
 CODE_00_3576:
 LD HL, $DF72
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 CP [HL]
 RET
 
@@ -7635,11 +7150,11 @@ RET
 CODE_00_3590:
 LD A, [$C609]
 CALL CODE_00_35BB
+
 LD A, [$C603]
 LD B, A
 LD A, [$DF7D]
 JR CODE_00_358B
-
 
 CODE_00_359F:
 LD C, $15
@@ -7647,7 +7162,6 @@ LD A, [$DF7E]
 LD B, A
 LD A, [$C601]
 JR CODE_00_358B
-
 
 CODE_00_35AA:
 LD A, [$C609]
@@ -7657,10 +7171,8 @@ LD B, A
 LD A, [$DF7E]
 JR CODE_00_358B
 
-
 CODE_00_35B9:
 SWAP A
-
 
 CODE_00_35BB:
 AND $0F
@@ -7670,8 +7182,6 @@ SLA A
 LD C, A
 RET
 
-
-
 CODE_00_35C5:
 LD HL, $DF7D
 LD A, [$C203]
@@ -7680,7 +7190,7 @@ LD [HL+], A
 LD A, [$C201]
 LD C, A
 LDH A, [JoypadInputHolding]
-BitA JoypadInput_Down
+BitTest JoypadInput_Down, A
 JR NZ, CODE_00_35DD
 
 LD B, $31
@@ -7711,6 +7221,7 @@ INC BC
 LD A, [BC]
 LD HL, DATA_01_692C
 CALL CODE_00_360F
+
 LD A, [BC]
 LD [$C609], A
 INC BC
@@ -7722,12 +7233,16 @@ LD A, [BC]
 LD [HL], A
 RET
 
+;FetchDataWithBCTimes4_00_360F
 CODE_00_360F:
 LD B, $00
 LD C, A
 SLA C
 RL B
 
+;FetchDataWithBCTimes2
+;Input HL - base data pointer
+;BC - pointer offset
 CODE_00_3616:
 SLA C
 RL B
@@ -7737,7 +7252,7 @@ LD C, L
 RET
 
 CODE_00_361E:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LDH [$FF94], A
 
 LD A, E
@@ -7756,45 +7271,49 @@ CALL CODE_00_327B
 LD E, A
 POP BC
 XOR A
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 
-CODE_00_3640:
-LD HL, $C1A2
+LOOP_00_3640:
+LD HL, CurrentEntityRAMOffset
 LD A, [HL]
 ADD A, $10
 JR Z, CODE_00_3656
+
 LD [HL], A
 LD HL, $C20D
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD A, [HL]
 CP E
 JP Z, CODE_00_36D2
-JR CODE_00_3640
+JR LOOP_00_3640
 
 CODE_00_3656:
 XOR A
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 
 CODE_00_365A:
-LD HL, $C1A2
+LD HL, CurrentEntityRAMOffset
 LD A, [HL]
 ADD A, $10
 JP Z, CODE_00_36D2
 
 LD [HL], A
 LD HL, $C200
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
+
 LD A, [HL]
 AND A
 JR NZ, CODE_00_365A
+
 PUSH BC
 PUSH DE
 PUSH HL
 LD D, H
 LD E, L
 LD HL, $C300
-CALL CODE_00_3298
-CALL CODE_00_36E7
+CALL GetCurrentEntityRAMOffset_00_3298
+CALL LOOP_00_36E7
 POP HL
 POP DE
 POP BC
@@ -7802,19 +7321,19 @@ LD A, $02
 LD [HL], A
 
 LD HL, $C303
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 LD [HL], B
 
 LD HL, $C301
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 LD [HL], C
 
 LD HL, $C20D
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 LD [HL], E
 
 LD HL, $C20C
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 
 LDH A, [$FF96]
 LD [HL], A
@@ -7824,7 +7343,7 @@ AND $F0
 JR NZ, CODE_00_36AE
 
 LD HL, $C302
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 
 LD A, $80
 LD [HL], A
@@ -7835,7 +7354,7 @@ BIT 7, A
 JR Z, CODE_00_36BC
 
 LD HL, $C208
-CALL CODE_00_3298
+CALL GetCurrentEntityRAMOffset_00_3298
 
 LD A, $10
 LD [HL], A
@@ -7846,41 +7365,44 @@ SLA A
 LD C, A
 LD B, $00
 LD HL, POINTERS_00_31C1
-ADD HL, BC
-LD B, [HL]                                                  ;get pointer into B and C
+ADD HL, BC                                                  ;offset
+
+LD B, [HL]                                                  ;get 16-bit pointer into BC
 INC HL
-
 LD C, [HL]
-LD HL, $C20E
-CALL CODE_00_3298
 
-LD [HL], B                                                  ;pointer into B and C
+LD HL, $C20E
+CALL GetCurrentEntityRAMOffset_00_3298
+
+LD [HL], B                                                  ;store BC into entity's RAM
 INC HL                                                      ;
 LD [HL], C                                                  ;
 
 CODE_00_36D2:
 LDH A, [$FF94]
-LD [$C1A2], A
+LD [CurrentEntityRAMOffset], A
 RET
 
-CODE_00_36D8:
+;some kind of code to initialize entity variables? seems to also be used for deleting an entity
+InitializeEntityVariables_00_36D8:
 LD HL, $C600
 LD D, H
 LD E, L
+
 LD HL, $C610
 LD A, [$C612]
 BIT 4, A
 JR NZ, CODE_00_36F1
 
-
-CODE_00_36E7:
+LOOP_00_36E7:
 XOR A
-LD [HL+], A
-LD [DE], A
+LD [HL+], A                                                 ;clear $C610-C61F
+LD [DE], A                                                  ;clear $C600-C60F
 INC DE
+
 LD A, L
 AND $0F
-JR NZ, CODE_00_36E7
+JR NZ, LOOP_00_36E7
 RET
 
 CODE_00_36F1:
@@ -7891,8 +7413,8 @@ SUB C
 CP $08
 JR C, CODE_00_3703
 
-LD E, $58                                                   ;pointer?
-LD D, $31
+LD E, LOW(DATA_00_3158)
+LD D, HIGH(DATA_00_3158)
 JR CODE_00_3709
 
 CODE_00_3703:
@@ -7906,6 +7428,7 @@ LD HL, $C60E
 LD A, E
 LD [HL+], A
 LD [HL], D
+
 LD D, $B0
 LD A, [$C208]
 AND $20
@@ -7937,42 +7460,47 @@ AND A                                                       ;
 JR NZ, LOOP_00_3730
 RET
 
-CODE_00_3737:
-LDH A, [Reg_InterruptsEnabler]
-LDH [$FF92], A                                              ;save currently enabled interrupt bits here
+;thanks to pokemon red and blue disassembly, I now know what this routine does!
+DisableLCD_00_3737:
+LDH A, [Reg_InterruptsEnabler]                              ;
+LDH [InterruptDisablerMirror], A                            ;save currently enabled interrupt bits here
 
-ResetBitA Interrupt_VBlank                                  ;disable VBlank bit
-LDH [Reg_InterruptsEnabler], A
+ResetBit Interrupt_VBlank, A                                ;disable VBlank bit
+LDH [Reg_InterruptsEnabler], A                              ;
 
-LOOP_373F:
-LDH A, [Register_LCDYPos]                                   ;check for horizontal line
-CP $91                                                      ;
-JR NZ, LOOP_373F
+LOOP_00_373F:
+LDH A, [Register_LCDYPos]                                   ;
+CP $91                                                      ;check if in VBlank
+JR NZ, LOOP_00_373F                                         ;
 
 LDH A, [Reg_LCDControlAndRender]                            ;
-AND $00                                                     ;??? (can use XOR A)
-LDH [Reg_LCDControlAndRender], A                            ;disable everything
+AND $00                                                     ;preserve NO bits, not even LCD control
+LDH [Reg_LCDControlAndRender], A                            ;
 
-LDH A, [$FF92]                                              ;restore interrupts
-LDH [Reg_InterruptsEnabler], A                         ;
+LDH A, [InterruptDisablerMirror]                            ;restore interrupts
+LDH [Reg_InterruptsEnabler], A                              ;
 RET                                                         ;
 
 ;does what it says on the tin, enable rendering
 EnableLCDAndRender_00_3750:
-LDH A, [Reg_LCDControlAndRender]
-OR LCDControlEnable|LCDSpriteRender|LCDBackgroundRender
-LDH [Reg_LCDControlAndRender], A
+LDH A, [Reg_LCDControlAndRender]                            ;
+OR LCDControlEnable|LCDSpriteRender|LCDBackgroundRender     ;
+LDH [Reg_LCDControlAndRender], A                            ;
 RET
 
 ;note: does not disable LCD, but disables sprite and background display
 DisableRender_00_3757:
+LDH A, [Reg_LCDControlAndRender]                            ;
+AND ~(LCDSpriteRender|LCDBackgroundRender)                  ;
+LDH [Reg_LCDControlAndRender], A                            ;
+RET                                                         ;
+
+;unused code, enables sprite and background rendering without control enable bit
+EnableRender_00_375E:
 LDH A, [Reg_LCDControlAndRender]
-AND $FF^(LCDSpriteRender|LCDBackgroundRender)
+OR LCDSpriteRender|LCDBackgroundRender
 LDH [Reg_LCDControlAndRender], A
 RET
-
-;unknown
-db $F0,$40,$F6,$03,$E0,$40,$C9
 
 ReadJoypadInputs_00_3765:
 LD A, $20
@@ -8008,21 +7536,21 @@ LD A, $30
 LDH [Reg_JoyPad], A
 RET
 
-CODE_00_3796:
+StoreOAMUploadCodeToRAM_00_3796:
 LD C, LOW(OAMUploadCode)
 LD B, $0A
-LD HL, CODE_00_37A4                                         ;put code into HRAM
+LD HL, OAMUploadCode_00_37A4                                ;put code into HRAM
 
-LOOP_379D:
+LOOP_00_379D:
 LD A, [HL+]
 LD [$FF00+C], A
 INC C
 DEC B
-JR NZ, LOOP_379D
+JR NZ, LOOP_00_379D
 RET
 
 ;some code that is stored into HRAM for faster access
-CODE_00_37A4:
+OAMUploadCode_00_37A4:
 LD A, $C0
 LDH [Reg_OAMDMA], A
 
@@ -8033,8 +7561,9 @@ DEC A                                                       ;wait for a bit, I g
 JR NZ, LOOP_00_37AA
 RET
 
+;related to gravity?
 CODE_00_37AE:
-LD A, [$C1A2]
+LD A, [CurrentEntityRAMOffset]
 LD E, A
 LD D, $00
 ADD HL, DE
@@ -8127,7 +7656,7 @@ JR ProcessStripeImage_00_3800                               ;keep going until hi
 
 DrawStripeImage_00_380F:
 LDH A, [Reg_LCDControlAndRender]                            ;
-BitA LCDControlEnable                                       ;
+BitTest LCDControlEnable, A                                 ;
 JR NZ, StripeImageIntoBuffer_00_382D                        ;if LCD is enabled, can only draw from buffer
 
 LD C, B                                                     ;transfer amount of bytes into C
@@ -8139,10 +7668,10 @@ LD D, A                                                     ;pointer into DE
 LDH A, [$FF90]
 LD E, A
 
-BitC StripeImageCommand_Repeat                              ;check if bit 7 is set
+BitTest StripeImageCommand_Repeat, C                        ;check if bit 7 is set
 JR Z, TransferData_00_37F7                                  ;standard data transfer if not
 
-ResetBitC StripeImageCommand_Repeat                         ;clear bit 7 again
+ResetBit StripeImageCommand_Repeat, C                       ;clear bit 7 again
 LD B, C                                                     ;C goes back into B
 LD A, [HL+]                                                 ;next byte
 
@@ -8185,10 +7714,10 @@ CALL TranferByteToBuffer_00_3886                            ;
 LDH A, [$FF90]                                              ;VRAM low
 CALL TranferByteToBuffer_00_3886
 
-BitB StripeImageCommand_Repeat                              ;check for repeat, again.
+BitTest StripeImageCommand_Repeat, B                        ;check for repeat, again.
 JR Z, CODE_00_3866
 
-ResetBitB StripeImageCommand_Repeat
+ResetBit StripeImageCommand_Repeat, B
 LD A, B
 CALL TranferByteToBuffer_00_3886
 LD A, [HL+]
@@ -8455,11 +7984,11 @@ INC DE
 LD B, $04                                                   ;
 XOR A                                                       ;all become 0
 
-CODE_00_3971:
+LOOP_00_3971:
 LD [DE], A
 INC DE
 DEC B
-JR NZ, CODE_00_3971
+JR NZ, LOOP_00_3971
 SCF
 
 CODE_00_3977:
@@ -8479,34 +8008,35 @@ db $08,$03,$20,$00
 db $00,$00,$00,$00
 
 CODE_00_39AA:
-LD A, [Player_State]
-CP $0E
-JP NZ, CODE_00_3A35
+LD A, [Player_State]                                        ;
+CP Player_State_Teleporting                                 ;
+JP NZ, CODE_00_3A35                                         ;
 
-LD A, [FrameCounter]
-AND $07
-JR NZ, CODE_00_39BE
+LD A, [FrameCounter]                                        ;every 8th frame...
+AND $07                                                     ;
+JR NZ, CODE_00_39BE                                         ;
 
-LD A, $17
-CALL QueueSoundPrep_00_072B
+LD A, SFX_Teleport                                          ;make teleport noise
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_39BE:
-LD HL, $C1F6
-INC [HL]
+LD HL, TeleportationTimer
+INC [HL]                                                    ;increment
 LD A, [HL]
 AND $3F
 RET NZ
-
-BIT 7, [HL]
+BIT 7, [HL]                                                 ;if bit 7 is set, it'll return you to the land select
 JR Z, CODE_00_39D0
+
 CALL CODE_00_3A2A
 JP CODE_00_3C35
 
 CODE_00_39D0:
 CALL DisableRender_00_3757
+
 LD A, $10
 CALL WaitForVBlank_372E
-CALL CODE_00_3737
+CALL DisableLCD_00_3737
 
 LD HL, $C210
 LD BC, $00F0
@@ -8534,35 +8064,36 @@ LD [$C203], A
 LD A, $02
 LD [$C8F8], A
 CALL CODE_00_04DE
+
 XOR A
 LD [$C8F8], A
 CALL EnableLCDAndRender_00_3750
 
-CODE_00_3A0E:
+LOOP_00_3A0E:
 LD A, $01
 CALL WaitForVBlank_372E
 
 CALL CODE_00_0FE5
+
 LD A, [FrameCounter]
-AND $07
+AND $07                                                     ;wait every 8 frames
 JR NZ, CODE_00_3A22
-LD A, $17
+
+LD A, SFX_Teleport
 CALL QueueSoundPrep_00_072B
 
 CODE_00_3A22:
-LD HL, $C1F6
-INC [HL]
-BIT 6, [HL]
-JR NZ, CODE_00_3A0E
-
+LD HL, TeleportationTimer                                   ;
+INC [HL]                                                    ;
+BIT 6, [HL]                                                 ;if bit 6 is set (on the other side of teleport mirror)
+JR NZ, LOOP_00_3A0E                                         ;keep teleport loop
 
 CODE_00_3A2A:
 XOR A
 LD [Player_State], A
 LD [$CA08], A
-LD [$C1F6], A
+LD [TeleportationTimer], A
 RET
-
 
 CODE_00_3A35:
 LD A, [$CA08]
@@ -8623,8 +8154,9 @@ CP $40
 JR C, CODE_00_3A59
 
 CODE_00_3A83:
-LD A, $0E
+LD A, Player_State_Teleporting
 LD [Player_State], A
+
 LD DE, $C1F7
 INC HL
 LD A, B
@@ -8636,13 +8168,16 @@ JR Z, CODE_00_3AAF
 CODE_00_3A95:
 CALL CODE_00_3AC6
 CALL CODE_00_3AC6
+
 LD A, [HL+]
 LD [DE], A
+
 INC DE
 LD A, [HL+]
 LD [DE], A
+
 XOR A
-LD [$C1F6], A
+LD [TeleportationTimer], A
 RET
 
 CODE_00_3AA5:
@@ -8651,13 +8186,14 @@ BIT 5, A
 JR NZ, CODE_00_3A95
 JP CODE_00_3A2A
 
+;special mirror
 CODE_00_3AAF:
 LD A, [CurrentLand]
 CP CurrentLand_DraculaDuckManor                             ;check if the mirror should bring you to the level select or not
 JR Z, CODE_00_3ABD
 
 LD A, $80
-LD [$C1F6], A
+LD [TeleportationTimer], A
 AND A
 RET
 
@@ -8695,8 +8231,8 @@ LD BC, $0028
 CALL ClearRAM_00_37E0
 
 LD A, [CurrentMessage]                                      ;message that will be displayed
-AND $1F
-DEC A                                                       ;0 doesn't count.
+AND $1F                                                     ;this limits to 30 messages
+DEC A                                                       ;0 doesn't count, so 30, not 31 messages.
 LD HL, LevelMessagePointers_00_3C78
 RST $28
 
@@ -8732,8 +8268,8 @@ LD A, [FrameCounter]
 AND $03
 JR NZ, CODE_00_3B2A
 
-LD A, $18
-CALL QueueSoundPrep_00_072B
+LD A, SFX_MessageText                                       ;
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_3B2A:
 LD A, $01                                                   ;
@@ -8786,7 +8322,7 @@ INC A
 LD [$C1AF], A
 CP $02
 JR C, CODE_00_3B8B
-CALL CODE_00_075F
+CALL WaitForAOrBPress_00_075F
 PUSH HL
 LD HL, Layout_MessageBox_00_3C3C
 CALL ProcessStripeImage_00_3800
@@ -8827,10 +8363,11 @@ LD A, [CurrentMessageType]
 BIT 7, A                                                    ;check if we're currently displaying an ending message
 RET NZ
 
-LD A, $4A
-CALL DrawMessageCharacter_00_3B3F
-CALL CODE_00_075F
-BIT LOG(JoypadInput_B<<16,2.0)>>16, A                       ;check if pressed B
+LD A, CHARVAL(".")                                          ;
+CALL DrawMessageCharacter_00_3B3F                           ;message ends with a dot
+
+CALL WaitForAOrBPress_00_075F                               ;wait for A or B
+BitTest JoypadInput_B, A                                    ;check if pressed B
 JR NZ, CODE_00_3BC9                                         ;if that is the case, close message box as normal
 
 LD A, [CurrentMessageType]
@@ -8914,50 +8451,6 @@ LD [GameMode], A
 SCF
 RET
 
-;clear status bar, it's now a dialogue box
-Layout_MessageBox_00_3C3C:
-db $9C,$80
-db 20
-db $4D,$4E,$4E,$4E,$4E
-db " MESSAGE "
-db $4E,$4E,$4E,$4E,$4E,$4F
-
-db $9C,$A0
-db 1
-db $68
-
-db $9C,$A1
-db 18|StripeImageCommand_Repeat
-db $6E
-
-db $9C,$B3
-db 1
-db $78
-
-db $9C,$C0
-db 1
-db $68
-
-db $9C,$C1
-db 18|StripeImageCommand_Repeat
-db $6E
-
-db $9C,$D3
-db 1
-db $78
-
-db $9C,$E0
-db 1
-db $5D
-
-db $9C,$E1
-db 18|StripeImageCommand_Repeat 
-db $5E
-
-db $9C,$F3
-db 1
-db $5F
-
-db StripeImageWriteCommand_Stop
+include "Data/Tilemaps/MessageBox.asm"
 
 include "Data/MessageLoader.asm"

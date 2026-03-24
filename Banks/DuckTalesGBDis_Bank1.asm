@@ -1,4 +1,4 @@
-;BANK 1 START
+;PRG ROM $4000-$7FFF
 
 SECTION "bank 1", ROMX, BANK[1]
 
@@ -1428,126 +1428,30 @@ db $00,$01,$07,$52,$01,$09,$00,$52
 db $01,$09,$00,$52,$01,$09,$00,$01
 db $0B,$52,$01,$00
 
+;last byte is unused for every entry
 DATA_01_692C:
-db $11,$9D,$D5
+db $11,$9D,$D5,$00
+db $22,$DD,$D4,$00
+db $31,$9F,$D5,$00
+db $12,$A5,$D5,$00
+db $22,$B5,$D5,$00
+db $32,$1D,$D6,$00
+db $42,$65,$D6,$00
+db $52,$95,$D6,$00
+db $13,$BD,$D6,$00
+db $23,$C3,$D6,$00
+db $33,$17,$D7,$00
+db $43,$21,$D9,$00
+db $34,$89,$DA,$00
+db $44,$09,$DC,$00
+db $64,$69,$DD,$00
+db $35,$C9,$DD,$00
+db $45,$E7,$DD,$00
+db $88,$37,$DE,$00
+db $00,$37,$DF,$00
+db $33,$87,$D3,$00
 
-;unknown
-db $00
-
-
-db $22,$DD,$D4
-
-;unknown
-db $00
-
-
-db $31,$9F,$D5
-
-;unknown
-db $00
-
-
-db $12,$A5,$D5
-
-;unknown
-db $00
-
-
-db $22,$B5,$D5
-
-;unknown
-db $00
-
-
-db $32,$1D,$D6
-
-;unknown
-db $00
-
-
-db $42,$65,$D6
-
-;unknown
-db $00
-
-
-db $52,$95,$D6
-
-;unknown
-db $00
-
-
-db $13,$BD,$D6
-
-;unknown
-db $00
-
-
-db $23,$C3,$D6
-
-;unknown
-db $00
-
-
-db $33,$17,$D7
-
-;unknown
-db $00
-
-
-db $43,$21,$D9
-
-;unknown
-db $00
-
-
-db $34,$89,$DA
-
-;unknown
-db $00
-
-
-db $44,$09,$DC
-
-;unknown
-db $00
-
-
-db $64,$69,$DD
-
-;unknown
-db $00
-
-
-db $35,$C9,$DD
-
-;unknown
-db $00
-
-
-db $45,$E7,$DD
-
-;unknown
-db $00
-
-
-db $88,$37,$DE
-
-;unknown
-db $00
-
-
-db $00,$37,$DF
-
-;unknown
-db $00
-
-
-db $33,$87,$D3
-
-;unknown
-db $00
-
+;animation data of some sort
 DATA_01_697C:
 db $00,$01,$01,$01,$02,$01,$03,$01
 db $04,$01,$05,$01,$06,$01,$07,$01
@@ -1564,7 +1468,8 @@ db $01,$05,$02,$05,$03,$05,$04,$05
 db $05,$05,$00,$06,$01,$06,$02,$06
 db $00,$07,$01,$07,$00,$08,$00,$09
 db $01,$09,$02,$09,$03,$09,$04,$09
-db $05,$09,$06,$09,$00,$0A,$01,$0A
+db $05,$09,$06,$09
+db $00,$0A,$01,$0A
 db $02,$0A,$03,$0A,$04,$0A,$05,$0A
 db $06,$0A,$07,$0A,$08,$0A,$09,$0A
 db $0A,$0A,$0B,$0A,$0C,$0A,$0D,$0A
@@ -2204,24 +2109,11 @@ INC DE
 INC DE
 RET
 
-;used to load graphics i think
-;high nibble - bank to switch to
-;low nibble - pointer offset?
-DATA_01_7A97:
-db $30,$3D,$3E,$3F,$29,$3D
+if Version != VERSION_JP
+  include "Data/SpecialScreenGraphicBankConfigurations.asm"
+endc
 
-DATA_01_7A9D:
-db $2F,$3D,$2C,$29,$2F,$3D
-
-DATA_01_7AA3:
-db $30,$31,$2C,$2F,$38,$3D
-
-DATA_01_7AA9:
-db $30,$31,$2C,$2F,$38,$3D
-
-DATA_01_7AAF:
-db $30,$34,$3E,$3F,$2F,$3D
-
+;palette configurations
 DATA_01_7AB5:
 db $E4,$D0
 
@@ -2426,8 +2318,8 @@ AND $1F
 CP $03
 JR NZ, CODE_01_7BE3
 
-LD A, $20
-CALL QueueSoundPrep_00_072B
+LD A, SFX_TimerRunningOut                                   ;
+CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_01_7BE3:
 LD HL, $C1D7
@@ -2490,10 +2382,10 @@ DEC B
 LOOP_01_7C23:
 LD A, [HL]
 AND A
-CP "0"                                          ;check if a zero
+CP CHARVAL("0")                                             ;check if a zero
 JR NZ, RETURN_01_7C2F
 
-LD A, " "
+LD A, CHARVAL(" ")
 LD [HL+], A
 DEC B
 JR NZ, LOOP_01_7C23
@@ -2526,7 +2418,8 @@ LD BC, $0046
 JP ClearRAM_00_37E0
 
 DATA_01_7C55:
-db $03,$18,$00,$25,$00,$00,$45,$10
+db $03,$18,$00,$25,$00,$00
+dw DATA_00_1045                                             ;animation pointer
 db $00,$21
 
 TitleScreenInit_01_7C5F:
@@ -2541,10 +2434,12 @@ CALL ClearRAM_00_37E0
 LD A, $01                                                   ;default difficulty is normal (the cursor will be on NORMAL)
 LD [SelectedDifficulty], A
 
-LD HL, DATA_01_7C55
-LD DE, $C200
-LD BC, $000A
-CALL TransferData_00_37F7
+if Version != VERSION_JP                                    ;winking eye is not present in japanese version
+  LD HL, DATA_01_7C55                                       ;get scrooge's winking eye sprite data
+  LD DE, $C200                                              ;
+  LD BC, $000A                                              ;
+  CALL TransferData_00_37F7                                 ;
+endc
 
 LD A, Music_TitleTheme                                      ;play title theme at the title screen
 JP QueueSoundPrep_00_072B                                   ;
@@ -2585,7 +2480,7 @@ CODE_01_7CB7:
 XOR A
 LDH [CurrentMusic], A
 
-LD A, $21
+LD A, SFX_ItemJingle
 CALL QueueSoundPrep_00_072B
 
 CALL CODE_01_7CF8
@@ -2598,7 +2493,7 @@ DEC B
 JR NZ, CODE_01_7CC4
 
 CODE_01_7CCC:
-CALL CODE_00_03C4
+CALL PlayMoneyCountingSFX_00_03C4
 CALL CODE_01_7CF8
 
 LD DE, Timer+1                                              ;count down second
@@ -2664,7 +2559,7 @@ LDH [$FF9C], A
 JP CODE_00_0C91
 
 CODE_01_7D33:
-LD D, BGTile_Blank                                          ;fill with blank tiles
+LD D, CHARVAL(" ")                                          ;fill with blank tiles
 LD BC, $0200
 CALL CODE_01_7C42
 
@@ -2682,6 +2577,7 @@ LD B, $70
 LD C, $58
 LD D, $0E
 CALL CODE_00_361E
+
 XOR A
 LD [$C8F8], A
 LD [$C627], A
@@ -2698,9 +2594,13 @@ DATA_01_7D68:
 db $40,$10,$CF,$D3,$20,$33
 
 DATA_01_7D6E:
-db $60,$14,$74,$7D,$00,$42,$00,$F8
-db $40,$F8,$00,$F9,$40,$F9,$00,$A6
-db $40,$A6,$00,$B6,$40,$B6
+db $60,$14
+dw DATA_01_7D74
+db $00,$42
+
+DATA_01_7D74:
+db $00,$F8,$40,$F8,$00,$F9,$40,$F9
+db $00,$A6,$40,$A6,$00,$B6,$40,$B6
 
 CODE_01_7D84:
 LD DE, DATA_01_7D68
@@ -2723,15 +2623,22 @@ RST $30
 JP CODE_01_7EA0
 
 DATA_01_7D9C:
-db $18,$1C,$AE,$7D,$20,$32
+db $18,$1C
+dw DATA_01_7DAE
+db $20,$32
 
 DATA_01_7DA2:
 db $18,$2C
-db $AE,$7D,$30,$32
+dw DATA_01_7DAE
+db $30,$32
 
 DATA_01_7DA8:
-db $18,$3C,$AE,$7D
-db $20,$32,$00,$08,$00,$09,$00,$18
+db $18,$3C
+dw DATA_01_7DAE
+db $20,$32
+
+DATA_01_7DAE:
+db $00,$08,$00,$09,$00,$18
 db $00,$19,$00,$28,$00,$29
 
 CODE_01_7DBA:
@@ -2766,7 +2673,7 @@ LD [$C603], A
 LD A, $10
 LD [$C601], A
 
-LD A, [CurrentLand]
+LD A, [CurrentLand]                                         ;displayed treasure depends on what land we selected
 
 CODE_01_7DEC:
 LD [$C605], A
@@ -2825,7 +2732,7 @@ CALL AddTo4ByteCounter_00_393F
 
 CALL CODE_01_7E62
 CALL CODE_01_7E53
-CALL CODE_00_075F
+CALL WaitForAOrBPress_00_075F
 
 LD A, [$C627]
 CP $FF
@@ -2846,9 +2753,9 @@ CALL CODE_00_0496
 LD DE, $99E5
 JP CODE_01_7B58
 
-
 CODE_01_7E62:
-CALL CODE_00_03C4
+CALL PlayMoneyCountingSFX_00_03C4
+
 LD DE, $CA19
 LD HL,DATA_00_0775+3
 JP SubstractFrom4ByteCounter_00_395D
@@ -3025,8 +2932,9 @@ RET
 
 CODE_01_7F5A:
 LD A, [CurrentOAMSlot]
-CP $A0
+CP 40*4                                                     ;check if all OAM slots are occupied
 JR C, CODE_01_7F63
+
 POP AF
 RET
 
@@ -3131,7 +3039,20 @@ LD A, [HL]
 ADD A, $08
 LD [HL+], A
 JR NC, RETURN_01_7FED
+
 INC [HL]
 
 RETURN_01_7FED:
 RET
+
+;there appears to be some unique data in european version specifically. compiler garbage?
+if Version == VERSION_EU
+  db $FF,$1D,$01,$01,$40,$81,$00,$00
+  db $14,$00,$55,$57,$55,$DF,$55,$55
+  db $5D,$75
+elif Version == VERSION_JP
+  ;pad with 0. I wish I could use OPT or a macro, but well, it is what it is.
+  ds 60,$00
+else
+  ds 18,$FF
+endc

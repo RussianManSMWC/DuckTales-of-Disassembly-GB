@@ -17,27 +17,20 @@ MACRO SetBankAndBackup
   LDH [CurrentProgramBank], A
 ENDM
 
+;word but in big endian
+macro dwb
+  db HIGH(\1),LOW(\1)
+endm
+
 ;so i don't have to remember LOG function every time, just use this to get a BIT value
-MACRO BitA
-  BIT LOG(\1<<16,2.0)>>16, A
-ENDM
+macro BitTest
+  BIT LOG(\1<<16,2.0)>>16, \2
+endm
 
-MACRO BitB
-  BIT LOG(\1<<16,2.0)>>16, B
-ENDM
+macro ResetBit
+  RES LOG(\1<<16,2.0)>>16, \2
+endm
 
-MACRO BitC
-  BIT LOG(\1<<16,2.0)>>16, C
-ENDM
-
-MACRO ResetBitA
-  RES LOG(\1<<16,2.0)>>16, A
-ENDM
-
-MACRO ResetBitB
-  RES LOG(\1<<16,2.0)>>16, B
-ENDM
-
-MACRO ResetBitC
-  RES LOG(\1<<16,2.0)>>16, C
-ENDM
+macro SetBit
+  SET LOG(\1<<16,2.0)>>16, \2
+endm

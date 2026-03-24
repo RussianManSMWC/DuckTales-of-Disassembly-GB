@@ -32,6 +32,8 @@ def APU_SpeakerVolume = $FF24                               ;bitwise: ALLL BRRR.
 def APU_SpeakerPan = $FF25                                  ;which speaker the channel goes into. bits 0-3 are for channels 1 through 4 on the right speaker (square 1 to noise, respectively), bits 4-7 are for channels 1 through 4 on the left speaker.
 def APU_AudioStatus = $FF26                                 ;bitwise: A--- NWsS. A - audio on/off. if set, all channels are disabled. the rest are read only (cannot be used to disable repsective channels). N - noise disabled, W - wave disabled, s - square 2 disabled, S - square 1 disabled.
 
+def APU_WavePattern = $FF30                                 ;16 bytes, each byte is consists of 2 4-bit samples
+
 ;;
 def Reg_LCDControlAndRender = $FF40
 

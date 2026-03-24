@@ -1,0 +1,11 @@
+dwb [VRAM loc]
+db [draw count]
+db [data array]
+
+[VRAM loc] = where a row of tilemap data will be drawn
+[draw count] = how many tiles to draw
+[data array] = tiles that will be drawn
+
+there are also a few commands to utilize:
+-if "|StripeImageCommand_Repeat" without quotation marks is present beside [draw count], the game will draw a single tile [draw count] times
+-db StripeImageWriteCommand_Stop is used to end drawing

@@ -108,9 +108,11 @@ AND A
 JR Z, CODE_02_40BE
 DEC [HL]
 CALL CODE_02_4188
+
 LD A, $20
 LDH [APU_WaveVolume], A
-LD HL, $FF1D
+
+LD HL, APU_WaveFrequency
 CALL C, CODE_02_4238
 
 CODE_02_40BE:
@@ -126,7 +128,7 @@ CODE_02_40CC:
 LDH A, [CurrentMusic]
 AND A
 JP NZ, CODE_02_4399
-RET
+RET                                                         ;if there's no music to process, return
 
 ;check if setting music
 CODE_02_40D3:

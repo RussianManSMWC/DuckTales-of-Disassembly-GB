@@ -1,22 +1,22 @@
 Layout_StatusBar_02_62BD:
-db $9C,$00
+dwb $9C00
 db $01
 db $4D
 
-db $9C,$13
+dwb $9C13
 db $01
 db $4F
 
-db $9C,$20
+dwb $9C20
 db $01
 db $68
 
-db $9C,$33
+dwb $9C33
 db $01
 db $78
 
 ;HP/TIME line
-db $9C,$40
+dwb $9C40
 db $14
 db $68
 db "HP ",$4C,$4C,$4C
@@ -24,23 +24,23 @@ db "   "                                                    ;space between time 
 db "TIME 000 "                                              ;shows 000 time by default
 db $78
 
-db $9C,$60
+dwb $9C60
 db $01
 db $5D
 
-db $9C,$61
+dwb $9C61
 db $92
 db $5E
 
-db $9C,$73
+dwb $9C73
 db $01
 db $5F
 
-db $9C,$02
+dwb $9C02
 db $08
 db "TOTAL  $"
 
-db $9C,$22
+dwb $9C22
 db $08
 db "P. 0"                                                   ;zero lives by default (naturally gets replaced later)
 db "   "                                                    ;space between lives and current dollar count

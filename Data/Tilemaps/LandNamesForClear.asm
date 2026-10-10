@@ -7,35 +7,35 @@ dw LandName_TheHimalayas_02_64C3
 dw LandName_TheMoon_02_64D4
 
 LandName_TheAmazon_02_6494:
-db $99,$04
+dwb $9904
 db 10
 db "THE AMAZON"
 
 db StripeImageWriteCommand_Stop
 
 LandName_Transylvania_02_64A2:
-db $99,$04
+dwb $9904
 db 12
 db "TRANSYLVANIA"
 
 db StripeImageWriteCommand_Stop
 
 LandName_AfricanMines_02_64B2:
-db $99,$04
+dwb $9904
 db 13
 db "AFRICAN MINES"
 
 db StripeImageWriteCommand_Stop
 
 LandName_TheHimalayas_02_64C3:
-db $99,$04
+dwb $9904
 db 13
 db "THE HIMALAYAS"
 
 db StripeImageWriteCommand_Stop
 
 LandName_TheMoon_02_64D4:
-db $99,$04
+dwb $9904
 db 8
 db "THE MOON"
 

@@ -32,6 +32,7 @@ DrawChestScreenFloor_JMP_03_402D:
 JP DrawChestScreenFloor_03_7E1C
 
 ;currently unknown, but it doesn't look like graphics...
+;but it is something compressed in the same manner
 DATA_03_4030:
 db $08
 db $08,$04,$6E,$12,$13,$12,$13

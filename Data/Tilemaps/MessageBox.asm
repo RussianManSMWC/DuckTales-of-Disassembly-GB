@@ -1,44 +1,44 @@
 ;clear status bar, it's now a dialogue box
 Layout_MessageBox_00_3C3C:
-db $9C,$80
+dwb $9C80
 db 20
 db $4D,$4E,$4E,$4E,$4E
 db " MESSAGE "
 db $4E,$4E,$4E,$4E,$4E,$4F
 
-db $9C,$A0
+dwb $9CA0
 db 1
 db $68
 
-db $9C,$A1
+dwb $9CA1
 db 18|StripeImageCommand_Repeat
 db $6E
 
-db $9C,$B3
+dwb $9CB3
 db 1
 db $78
 
-db $9C,$C0
+dwb $9CC0
 db 1
 db $68
 
-db $9C,$C1
+dwb $9CC1
 db 18|StripeImageCommand_Repeat
 db $6E
 
-db $9C,$D3
+dwb $9CD3
 db 1
 db $78
 
-db $9C,$E0
+dwb $9CE0
 db 1
 db $5D
 
-db $9C,$E1
+dwb $9CE1
 db 18|StripeImageCommand_Repeat 
 db $5E
 
-db $9C,$F3
+dwb $9CF3
 db 1
 db $5F
 

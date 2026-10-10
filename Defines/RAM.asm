@@ -12,6 +12,7 @@ def Buffer_WritingFlag = $C1A0                              ;set to 1 when writi
 def CurrentOAMSlot = $C1A1                                  ;counts up by 4 for each used slot
 def CurrentEntityRAMOffset = $C1A2
 
+def LatestGraphicsConfiguration = $C1A3                     ;6 bytes. store an array of graphics that have been loaded. used to skip loading them again
 
 def CurrentMessage = $C1AA
 ;$C1AB - unused
@@ -38,6 +39,7 @@ def PauseFlag = $C1FD
 def CurrentEntity_YPosScreenRelative = $C601
 def CurrentEntity_XPosScreenRelative = $C603
 def CurrentEntity_AnimationFrame = $C605
+def CurrentEntity_Size = $C609                              ;graphics size - amount of tiles per row and rows
 def CurrentEntity_DataPointer = $C60E                       ;points to a set of data used by the entity, various properties and stuff
 ;C610 - entity ID?
 def CurrentEntity_WaitTimer = $C617                         ;counts down until zero, stops data parsing
@@ -84,14 +86,17 @@ def MessageQueue = $DF6A                                    ;will display the me
 
 def ScreenShakeTimer = $DF71                                ;handles screen shaking and SFX. note that it does not decrement on its own
 
+def Stack = $DFFF
+
 def OAMUploadCode = $FF80                                   ;code in RAM
 
 def JoypadInputHolding = $FF8B
 def JoypadInputPress = $FF8C
 
-;FF8F-FF90 - temporary pointer RAM
+def VRAMPointer = $FF8F
+
 def VBlankWaitCounter = $FF91                               ;used to tell the game to wait for VBlank code. counts down for every VBlank hit.
-def InterruptDisablerMirror = $FF92
+def InterruptEnablerMirror = $FF92
 def CurrentProgramBank = $FF93
 ;$FF94 - temporary?
 

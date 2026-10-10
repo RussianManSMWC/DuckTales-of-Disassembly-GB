@@ -1,7 +1,7 @@
 ;A disassembly of Duck Tales for the Game Boy
 ;PRG ROM $0000-$3FFF
 
-;used to execute code pointers right after the the jump
+;used to execute code pointers right after the jump
 SECTION "rst 00", ROM0[$0]
 ADD A, A                                                    ;double A
 POP HL                                                      ;will not return to where we executed the pointer (so taht we don't break the game)
@@ -17,8 +17,10 @@ JP HL
 
 db $00,$00,$00,$00,$00,$00,$00
 
-;used to execute code pointers right after the jump and after that jump into code stored in DE
-;input A - pointer to execute
+;used to execute a code pointer after this call, and after that jump to address stored in DE
+;input:
+;A - pointer to execute
+;DE - destination after executing code pointer
 SECTION "rst 10", ROM0[$10]
 ADD A, A                                                    ;double A
 POP HL
@@ -52,6 +54,7 @@ RET
 
 db $00
 
+;used to get a pointer
 SECTION "rst 28",ROM0[$28]
 CODE_00_0028:
 ADD A, A
@@ -145,26 +148,27 @@ include "Defines/CharacterSet.asm"
 SECTION "Main", ROM0 [$150]
 RESET_00_0150:
 DI                                                          ;disable interrupt
-CALL DisableLCD_00_3737
+CALL DisableLCD_00_3737                                     ;
 
-LD SP, $DFFF
-CALL StoreOAMUploadCodeToRAM_00_3796
+LD SP, Stack                                                ;
 
-LD HL, $C000
-LD BC, $1FF0
-CALL ClearRAM_00_37E0
+CALL StoreOAMUploadCodeToRAM_00_3796                        ;
+
+LD HL, $C000                                                ;clear some WRAM
+LD BC, $1FF0                                                ;
+CALL ClearRAM_00_37E0                                       ;
 
 LD HL, $FF8A                                                ;clear some HRAM
-LD BC, $0075
-CALL ClearRAM_00_37E0
+LD BC, $0075                                                ;
+CALL ClearRAM_00_37E0                                       ;
 
 CALL ClearTilemap_00_37E8
 
-CALL CODE_00_0183
+CALL Call_InitializeSoundRegisters_00_0183                  ;
 
-LDH [Register_BackgroundPalette], A                         ;init palettes
-LDH [Register_SpritePalette0], A                            ;
-LDH [Register_SpritePalette1], A                            ;
+LDH [Reg_BackgroundPalette], A                              ;init palettes
+LDH [Reg_SpritePalette0], A                                 ;
+LDH [Reg_SpritePalette1], A                                 ;
 
 LD A, Interrupt_VBlank
 LDH [Reg_InterruptsEnabler], A
@@ -173,7 +177,7 @@ CALL EnableLCDAndRender_00_3750
 EI
 JP CODE_00_0257
 
-CODE_00_0183:
+Call_InitializeSoundRegisters_00_0183:
 SetBankAndBackup 2
 
 CALL InitSoundRegisters_JMP_02_402F
@@ -201,11 +205,12 @@ LDH A, [Reg_LCDControlAndRender]
 OR LCDBackgroundTilemapSelect
 LDH [Reg_LCDControlAndRender], A
 
-LD A, $40
+LD A, LCDStatus_LCDYCheck
 LDH [Reg_LCDStatus], A
 
-LD A, $1F
-LDH [Register_LCDYCompare], A
+LD A, $1F                                                   ;horizontal line where status bar ends
+LDH [Reg_LCDYCompare], A
+
 LDH A, [Reg_InterruptsEnabler]
 OR Interrupt_HBlank                                         ;enable horizontal blank
 LDH [Reg_InterruptsEnabler], A
@@ -213,7 +218,7 @@ EI                                                          ;enable interrupts
 
 CODE_00_01C0:
 XOR A
-LDH [Register_CameraXPosition], A
+LDH [Reg_CameraXPosition], A
 
 LD A, [CurrentMessage]                                      ;check if we're displaying a message
 AND A                                                       ;
@@ -222,7 +227,7 @@ JR Z, CODE_00_01CB                                          ;
 LD A, $20                                                   ;move camera to the message box (it's drawn below status bar to give an illusion of it replacing the status bar. clever!
 
 CODE_00_01CB:
-LDH [Register_CameraYPosition], A                           ;
+LDH [Reg_CameraYPosition], A                                ;
 
 LD A, [$C631]
 LD [CameraPositionX], A
@@ -320,35 +325,35 @@ POP AF
 RETI
 
 HBlank_00_0236:
-PUSH AF
+PUSH AF                                                     ;
 LDH A, [Reg_LCDStatus]                                      ;
-BIT 2, A                                                    ;checks if hit speicific horizontal line
+BitTest LCDStatus_LCDYEqualCheck, A                         ;checks if hit speicific horizontal line
 JR Z, CODE_0255                                             ;nothing happens if haven't
 
-LDH A, [Reg_InterruptsEnabler]                         ;
-AND $FF^Interrupt_HBlank                                    ;disable h-blank
-LDH [Reg_InterruptsEnabler], A                         ;
+LDH A, [Reg_InterruptsEnabler]                              ;
+AND ~Interrupt_HBlank                                       ;disable h-blank
+LDH [Reg_InterruptsEnabler], A                              ;
 
-LD A, [CameraPositionY]
-SUB $10
-LDH [Register_CameraYPosition], A
+LD A, [CameraPositionY]                                     ;
+SUB $10                                                     ;render level
+LDH [Reg_CameraYPosition], A                                ;
 
-LD A, [CameraPositionX]
-LDH [Register_CameraXPosition], A
+LD A, [CameraPositionX]                                     ;
+LDH [Reg_CameraXPosition], A                                ;
 
-LDH A, [Reg_LCDControlAndRender]
-AND $FF^LCDBackgroundTilemapSelect                          ;finished rendering status bar, render the background from now on
-LDH [Reg_LCDControlAndRender], A
+LDH A, [Reg_LCDControlAndRender]                            ;
+AND ~LCDBackgroundTilemapSelect                             ;finished rendering status bar, render the background from now on
+LDH [Reg_LCDControlAndRender], A                            ;
 
 CODE_0255:
-POP AF
-RETI
+POP AF                                                      ;
+RETI                                                        ;
 
 ;transition into game mode
 CODE_00_0257:
-LD SP, $DFFF                                                ;stack
-CALL DisableLCD_00_3737
-CALL ClearTilemap_00_37E8
+LD SP, Stack                                                ;
+CALL DisableLCD_00_3737                                     ;
+CALL ClearTilemap_00_37E8                                   ;
 
 SetProgramBank1
 CALL CODE_01_7AC6
@@ -373,7 +378,7 @@ LD DE, POINTERS_02_4000+(0*2)
 CALL ProcessStripeImageFromBank2_00_032A                    ;draw title screen
 
 LD HL, TitleScreenGraphicBanks_01_7A97                      ;load title screen graphics
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 
 CALL TitleScreenInit_01_7C5F
 
@@ -443,7 +448,7 @@ endc
 
 CODE_00_02B6:
 LD HL, LandSelectGraphicBanks_01_7A9D
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 
 LD HL, DATA_01_7AB7
 CALL SetPalettes_01_7ABC
@@ -612,7 +617,7 @@ LD DE, POINTERS_02_4000+(6*2)                               ;all land clear!!! s
 CALL ProcessStripeImageFromBank2_00_032A                    ;will draw it
 
 LD A, 128                                                   ;wait 128 frames...
-CALL WaitForVBlank_372E                                     ;
+CALL WaitForVBlank_00_372E                                  ;
 
 LD DE, POINTERS_02_4000+(16*2)                              ;clear those strings
 CALL ProcessStripeImageFromBank2_00_032A                    ;
@@ -667,7 +672,7 @@ CALL DisableLCD_00_3737
 CALL SetProgramBank2_00_0337
 
 LD BC, $0D02
-CALL CODE_00_38E7
+CALL LoadGraphics_00_38E7
 
 SetProgramBank1
 
@@ -710,7 +715,7 @@ LD A, SFX_ItemJingle                                        ;win!
 CALL QueueSoundPrep_00_072B                                 ;
 
 LD A, 240                                                   ;wait a while before transition
-CALL WaitForVBlank_372E                                     ;
+CALL WaitForVBlank_00_372E                                  ;
 JP CODE_00_054F
 
 CODE_00_0438:
@@ -819,9 +824,9 @@ JP RemoveLeadingZeroes_01_7C1F
 
 CODE_00_04CA:
 SetBankAndBackup 3
-LD HL, DATA_03_4030
+LD HL, DATA_03_4030                                         ;something else that's compressed in the same way as graphics
 LD DE, $CE1F
-CALL CODE_00_3929
+CALL DecompressionAlgorithm_00_3929
 
 SetProgramBank1
 CALL CODE_01_7AF3
@@ -841,7 +846,7 @@ CALL CODE_01_7B1A
 
 LD A, [$C630]
 AND A
-CALL Z, CODE_00_38A7
+CALL Z, LoadAllGraphics_00_38A7
 
 POP HL
 CALL CODE_00_085D
@@ -920,7 +925,7 @@ SetBankAndBackup 3
 CALL DrawChestScreenFloor_JMP_03_402D
 
 LD HL, EndingChestGraphicBanks_01_7AA3
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 
 CALL EnableLCDAndRender_00_3750
 CALL CODE_01_7D46
@@ -930,10 +935,10 @@ CALL CODE_00_03D0
 CALL CODE_00_05F7
 
 LD A, $E1
-LDH [Register_BackgroundPalette], A
+LDH [Reg_BackgroundPalette], A
 
 LD HL, EndingDuckPressGraphcBanks_01_7AA9
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 
 LD DE, POINTERS_02_4000+(17*2)
 CALL ProcessStripeImageFromBank2_00_032A
@@ -950,14 +955,14 @@ XOR A
 LD [CurrentOAMSlot], A
 
 LD A, $E4
-LDH [Register_BackgroundPalette], A
+LDH [Reg_BackgroundPalette], A
 
 if Version == VERSION_JP
   LD HL, EndingCharacterPortraitGraphicBanksNephews_JP_00_02A0
 else
   LD HL, EndingCharacterPortraitGraphicBanks_01_7AAF
 endc
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 
 CALL EnableLCDAndRender_00_3750
 
@@ -965,7 +970,7 @@ LD DE, POINTERS_03_4000+(17*2)
 CALL ProcessStripeImageFromBank3_00_033F
 
 LD A, $10
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 
 CALL CODE_01_7DBA
 
@@ -982,11 +987,11 @@ CALL CODE_00_03D0
 CALL CODE_00_05F7
 
 LD HL, EndingCharacterPortraitGraphicBanks_01_7AAF
-CALL CODE_00_38A7
+CALL LoadAllGraphics_00_38A7
 CALL EnableLCDAndRender_00_3750
 
 LD A, $10
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 
 LD DE, POINTERS_03_4000+(18*2)
 CALL ProcessStripeImageFromBank3_00_033F
@@ -1080,7 +1085,7 @@ CALL TransferData_00_37F7
 
 LOOP_00_0686:
 LD A, $01                                                   ;
-CALL WaitForVBlank_372E                                     ;
+CALL WaitForVBlank_00_372E                                  ;
 
 LD HL, PauseFlag                                            ;
 LDH A, [JoypadInputPress]                                   ;
@@ -1127,7 +1132,7 @@ BIT 0, A
 JR Z, CODE_00_06DE
 
 LD A, 160
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 JP CODE_00_0257
 
 CODE_00_06DE:
@@ -1147,7 +1152,7 @@ CALL CODE_00_0FE5
 CALL SetProgramBank2_00_0337
 
 LD BC, $0903
-CALL CODE_00_38E7
+CALL LoadGraphics_00_38E7
 
 SetProgramBank1
 CALL DisplayMessage_00_3AD5
@@ -1163,7 +1168,7 @@ LD A, [$C1A6]
 AND $0F
 LD B, A
 LD C, $03
-CALL CODE_00_38E7
+CALL LoadGraphics_00_38E7
 
 XOR A
 LD [Player_State], A
@@ -1176,7 +1181,6 @@ SetLevelMusicPrep_00_0725:
 CALL SetProgramBank2_00_0337
 JP SetLevelMusic_JMP_02_4026
 
-;i think this is sound effect related
 ;input A - sound effect or music to queue.
 QueueSoundPrep_00_072B:
 PUSH HL                                                     ;
@@ -1210,7 +1214,7 @@ JP TransferData_00_37F7
 ;wait a single frame for VBlank, used for sync
 WaitFrame_00_075A:
 LD A, $01
-JP WaitForVBlank_372E
+JP WaitForVBlank_00_372E
 
 ;Wait until A or B had been pressed. Used for message box, ending
 WaitForAOrBPress_00_075F:
@@ -1425,7 +1429,7 @@ RST $28
 LD H, D
 LD L, E
 LD DE, $C650
-CALL CODE_00_3929
+CALL DecompressionAlgorithm_00_3929
 POP HL
 RET
 
@@ -1499,9 +1503,9 @@ INC HL
 DEC B
 JR NZ, LOOP_00_08DA
 
-LDH A, [$FF8F]
+LDH A, [VRAMPointer]
 LD D, A
-LDH A, [$FF90]
+LDH A, [VRAMPointer+1]
 LD E, A
 
 LD HL, $C8D0
@@ -1528,13 +1532,14 @@ PUSH BC
 LD B, $02
 CALL DrawStripeImage_00_380F
 
-LDH A, [$FF90]
+LDH A, [VRAMPointer+1]
 ADD A, $20
-LDH [$FF90], A
+LDH [VRAMPointer+1], A
 JR NC, CODE_00_0912
-LDH A, [$FF8F]
+
+LDH A, [VRAMPointer]
 INC A
-LDH [$FF8F], A
+LDH [VRAMPointer], A
 
 CODE_00_0912:
 POP BC
@@ -2155,34 +2160,40 @@ CALL CODE_00_07F7
 
 CODE_00_0C91:
 CALL CODE_00_37B6
+
 LD HL, $FF9C
-LDH A, [$FF8F]
+LDH A, [VRAMPointer]
 LD D, A
-LDH A, [$FF90]
+LDH A, [VRAMPointer+1]
 LD E, A
+
 CALL CODE_00_0956
+
 LD HL, $FF9C
 LD DE, $FF9E
 CALL CODE_00_0877
+
 LD HL, $FF9E
 LD C, $02
 
-CODE_00_0CAE:
+LOOP_00_0CAE:
 PUSH BC
 LD B, $02
 CALL DrawStripeImage_00_380F
-LDH A, [$FF90]
+
+LDH A, [VRAMPointer+1]
 ADD A, $20
-LDH [$FF90], A
+LDH [VRAMPointer+1], A
 JR NC, CODE_00_0CC1
-LDH A, [$FF8F]
+
+LDH A, [VRAMPointer]
 INC A
-LDH [$FF8F], A
+LDH [VRAMPointer], A
 
 CODE_00_0CC1:
 POP BC
 DEC C
-JR NZ, CODE_00_0CAE
+JR NZ, LOOP_00_0CAE
 RET
 
 CODE_00_0CC6:
@@ -2687,7 +2698,7 @@ LD L, D
 INC H                                                       ;next 16 bytes
 JR CODE_00_0FB4
 
-StoreCurrentEntityVariables_0FA4:
+StoreCurrentEntityVariables_00_0FA4:
 LD HL, $C600                                                ;current entity RAM
 LD BC, $C200                                                ;specific entity RAM
 LD A, [CurrentEntityRAMOffset]
@@ -2700,69 +2711,11 @@ INC B                                                       ;increment high byte
 
 ;unrolled storage
 CODE_00_0FB4:
-LD A, [HL+]
-LD [BC], A                                                  ;variable 1
-INC C
-
-LD A, [HL+]
-LD [BC], A                                                  ;variable 2
-INC C
-
-LD A, [HL+]
-LD [BC], A                                                  ;variable 3... I think you get the idea
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
-
-LD A, [HL+]
-LD [BC], A
-INC C
+REPT 16
+  LD A, [HL+]                                               ;store 16 variables from one area of RAM to another
+  LD [BC], A                                                ;
+  INC C                                                     ;
+ENDR
 RET
 
 CODE_00_0FE5:
@@ -2797,7 +2750,7 @@ CALL CODE_00_10B6
 
 LD A, [CurrentEntityRAMOffset]
 AND A
-CALL NZ, StoreCurrentEntityVariables_0FA4
+CALL NZ, StoreCurrentEntityVariables_00_0FA4
 
 LD A, [$C600]
 BIT 7, A                                                    ;check if bit 7 is clear, can display graphics
@@ -4849,7 +4802,7 @@ LD [$DF78], A
 RET
 
 CODE_00_1BC6:
-LD HL, Register_BackgroundPalette
+LD HL, Reg_BackgroundPalette
 LD A, [HL]
 CPL
 LD [HL], A
@@ -5467,12 +5420,12 @@ CODE_00_1F09:
 SetBankAndBackup 2
 LD B, $0C
 LD C, $02
-CALL CODE_00_38E7
+CALL LoadGraphics_00_38E7
 CALL GetEntityDataArgument_00_329E
 
 LD B, A
 LD C, $03
-CALL CODE_00_38E7
+CALL LoadGraphics_00_38E7
 SetBankAndBackup 1
 RET
 
@@ -7450,26 +7403,26 @@ LD [$C600], A
 RET
 
 ;input A - how many VBlank hits to wait for
-WaitForVBlank_372E:
-LDH [VBlankWaitCounter], A
+WaitForVBlank_00_372E:
+LDH [VBlankWaitCounter], A                                  ;
 
 LOOP_00_3730:
 HALT                                                        ;wait until interrupt...
 LDH A, [VBlankWaitCounter]                                  ;check if the counter is 0
 AND A                                                       ;
-JR NZ, LOOP_00_3730
-RET
+JR NZ, LOOP_00_3730                                         ;
+RET                                                         ;
 
 ;thanks to pokemon red and blue disassembly, I now know what this routine does!
 DisableLCD_00_3737:
 LDH A, [Reg_InterruptsEnabler]                              ;
-LDH [InterruptDisablerMirror], A                            ;save currently enabled interrupt bits here
+LDH [InterruptEnablerMirror], A                             ;save currently enabled interrupt bits here
 
 ResetBit Interrupt_VBlank, A                                ;disable VBlank bit
 LDH [Reg_InterruptsEnabler], A                              ;
 
 LOOP_00_373F:
-LDH A, [Register_LCDYPos]                                   ;
+LDH A, [Reg_LCDYPos]                                        ;
 CP $91                                                      ;check if in VBlank
 JR NZ, LOOP_00_373F                                         ;
 
@@ -7477,7 +7430,7 @@ LDH A, [Reg_LCDControlAndRender]                            ;
 AND $00                                                     ;preserve NO bits, not even LCD control
 LDH [Reg_LCDControlAndRender], A                            ;
 
-LDH A, [InterruptDisablerMirror]                            ;restore interrupts
+LDH A, [InterruptEnablerMirror]                             ;restore interrupts
 LDH [Reg_InterruptsEnabler], A                              ;
 RET                                                         ;
 
@@ -7503,24 +7456,25 @@ LDH [Reg_LCDControlAndRender], A
 RET
 
 ReadJoypadInputs_00_3765:
-LD A, $20
-LDH [Reg_JoyPad], A
+LD A, $20                                                   ;
+LDH [Reg_JoyPad], A                                         ;read buttons
 
-LDH A, [Reg_JoyPad]
-LDH A, [Reg_JoyPad]
+LDH A, [Reg_JoyPad]                                         ;
+LDH A, [Reg_JoyPad]                                         ;twice
 CPL
 AND $0F
 SWAP A
 LD B, A
-LD A, $10
-LDH [Reg_JoyPad], A
+
+LD A, $10                                                   ;read directions
+LDH [Reg_JoyPad], A                                         ;
 
 LDH A, [Reg_JoyPad]
 LDH A, [Reg_JoyPad]
 LDH A, [Reg_JoyPad]
 LDH A, [Reg_JoyPad]
 LDH A, [Reg_JoyPad]
-LDH A, [Reg_JoyPad]
+LDH A, [Reg_JoyPad]                                         ;read 6 times for... stabilizing inputs
 CPL
 AND $0F
 OR B
@@ -7529,6 +7483,7 @@ LDH A, [JoypadInputHolding]
 XOR C
 AND C
 LDH [JoypadInputPress], A
+
 LD A, C
 LDH [JoypadInputHolding], A
 
@@ -7590,9 +7545,9 @@ LD E, A
 LD D, $00
 ADD HL, DE
 LD A, H
-LDH [$FF8F], A
+LDH [VRAMPointer], A
 LD A, L
-LDH [$FF90], A
+LDH [VRAMPointer+1], A
 POP HL
 POP DE
 RET
@@ -7602,56 +7557,57 @@ RET
 ;HL - RAM starting point
 ClearRAM_00_37E0:
 XOR A                                                       ;big fat 0
-LD [HL+], A
-DEC BC
-LD A, C
-OR B
+LD [HL+], A                                                 ;
+
+DEC BC                                                      ;
+LD A, C                                                     ;
+OR B                                                        ;
 JR NZ, ClearRAM_00_37E0                                     ;clear until we're done
-RET
+RET                                                         ;
 
 ;clear tilemap
 ClearTilemap_00_37E8:
-LD HL, $9800
-LD BC, $0800
+LD HL, $9800                                                ;
+LD BC, $0800                                                ;
 
 LOOP_00_37EE:
 LD A, $6E                                                   ;fill with this tile
-LD [HL+], A
-DEC BC
+LD [HL+], A                                                 ;
 
-LD A, C
-OR B
+DEC BC                                                      ;
+LD A, C                                                     ;
+OR B                                                        ;
 JR NZ, LOOP_00_37EE                                         ;loop until done
-RET
+RET                                                         ;
 
 ;Transfer from table routine.
 ;input: HL - pointer
 ;DE - RAM or other location to store from pointer
 ;BC - amount of bytes to transfer
 TransferData_00_37F7:
-LD A, [HL+]
-LD [DE], A
-INC DE
-DEC BC
-LD A, B
-OR C
-JR NZ, TransferData_00_37F7
-RET
+LD A, [HL+]                                                 ;
+LD [DE], A                                                  ;
+INC DE                                                      ;
+
+DEC BC                                                      ;
+LD A, B                                                     ;
+OR C                                                        ;
+JR NZ, TransferData_00_37F7                                 ;
+RET                                                         ;
 
 ;HL - pointer to a tilemap
 ProcessStripeImage_00_3800:
-LD A, [HL+]
+LD A, [HL+]                                                 ;
 AND A                                                       ;check if A is zero
-RET Z
+RET Z                                                       ;
+LDH [VRAMPointer], A                                        ;VRAM pointer
 
-LDH [$FF8F], A                                              ;VRAM pointer
 LD A, [HL+]
+LDH [VRAMPointer+1], A                                      ;store high byte
 
-LDH [$FF90], A                                              ;store high byte
 LD A, [HL+]
-
-LD B, A                                                     ;how many bytes to transfer. if bit 7 is set, 
-CALL DrawStripeImage_00_380F
+LD B, A                                                     ;how many bytes to transfer + repeat write command if applicable
+CALL DrawStripeImage_00_380F                                ;
 JR ProcessStripeImage_00_3800                               ;keep going until hitting that elusive stop command
 
 DrawStripeImage_00_380F:
@@ -7662,16 +7618,16 @@ JR NZ, StripeImageIntoBuffer_00_382D                        ;if LCD is enabled, 
 LD C, B                                                     ;transfer amount of bytes into C
 LD B, $00                                                   ;clear B
 
-LDH A, [$FF8F]
+LDH A, [VRAMPointer]                                        ;
 LD D, A                                                     ;pointer into DE
 
-LDH A, [$FF90]
-LD E, A
+LDH A, [VRAMPointer+1]                                      ;
+LD E, A                                                     ;
 
 BitTest StripeImageCommand_Repeat, C                        ;check if bit 7 is set
 JR Z, TransferData_00_37F7                                  ;standard data transfer if not
 
-ResetBit StripeImageCommand_Repeat, C                       ;clear bit 7 again
+ResetBit StripeImageCommand_Repeat, C                       ;clear bit 7
 LD B, C                                                     ;C goes back into B
 LD A, [HL+]                                                 ;next byte
 
@@ -7690,7 +7646,7 @@ CP $60                                                      ;check if we're writ
 JR C, CODE_00_383B                                          ;
 
 LD A, $01                                                   ;clear the buffer if overloaded
-CALL WaitForVBlank_372E                                     ;
+CALL WaitForVBlank_00_372E                                  ;
 
 CODE_00_383B:
 LD A, $01                                                   ;UNDER CONSTRUCTION!!!
@@ -7703,24 +7659,25 @@ LD C, A                                                     ;
 ADD A, E                                                    ;load new data into the area in the buffer where we left off last time.
 LD E, A                                                     ;
 JR NC, CODE_00_3848                                         ;
+
 INC D                                                       ;handle high byte for that
 
 CODE_00_3848:
 INC DE                                                      ;get from Buffer_DataCount to Buffer_Storage
 
-LDH A, [$FF8F]                                              ;VRAM high
+LDH A, [VRAMPointer]                                        ;VRAM high
 CALL TranferByteToBuffer_00_3886                            ;
 
-LDH A, [$FF90]                                              ;VRAM low
+LDH A, [VRAMPointer+1]                                      ;VRAM low
 CALL TranferByteToBuffer_00_3886
 
 BitTest StripeImageCommand_Repeat, B                        ;check for repeat, again.
-JR Z, CODE_00_3866
+JR Z, CODE_00_3866                                          ;
 
-ResetBit StripeImageCommand_Repeat, B
-LD A, B
-CALL TranferByteToBuffer_00_3886
-LD A, [HL+]
+ResetBit StripeImageCommand_Repeat, B                       ;
+LD A, B                                                     ;
+CALL TranferByteToBuffer_00_3886                            ;
+LD A, [HL+]                                                 ;
 
 LOOP_00_385E:
 CALL TranferByteToBuffer_00_3886                            ;since buffer does not check for this bit, keep filling it with this byte.
@@ -7729,8 +7686,8 @@ JR NZ, LOOP_00_385E                                         ;
 JR CODE_00_3871                                             ;put a stop
 
 CODE_00_3866:
-LD A, B
-CALL TranferByteToBuffer_00_3886
+LD A, B                                                     ;
+CALL TranferByteToBuffer_00_3886                            ;
 
 LOOP_00_386A:
 LD A, [HL+]                                                 ;
@@ -7749,10 +7706,10 @@ XOR A                                                       ;zero this thing
 LD [Buffer_WritingFlag], A                                  ;anti-under construction
 
 POP BC                                                      ;
-LDH A, [$FF8F]                                              ;
+LDH A, [VRAMPointer]                                        ;
 LD D, A                                                     ;
 
-LDH A, [$FF90]                                              ;
+LDH A, [VRAMPointer+1]                                      ;
 ADD A, B                                                    ;add amount of bytes we just processed
 LD E, A                                                     ;
 RET NC                                                      ;return, potentially for more buffer writes
@@ -7787,7 +7744,7 @@ LD D, A                                                     ;D - VRAM pointer hi
 LD A, [HL+]                                                 ;
 LD E, A                                                     ;E - VRAM pointer low
 
-LD A, [HL+]
+LD A, [HL+]                                                 ;
 LD B, A                                                     ;B - amount of tiles to write
 
 LOOP_00_389F:
@@ -7800,42 +7757,47 @@ JR NZ, LOOP_00_389F                                         ;
 JR LOOP_00_3892                                             ;go back and check if need to do more writes
 
 ;used to load graphics...
-CODE_00_38A7:
-LD DE, $C1A3
-LD C, $00
+;HL - graphic bank configuration
+LoadAllGraphics_00_38A7:
+LD DE, LatestGraphicsConfiguration                          ;
+LD C, $00                                                   ;
 
 LOOP_00_38AC:
-SetBankAndBackup 1
+SetBankAndBackup 1                                          ;is this necessary? the bank will likely be overwritten anyway
 
-LD A, [HL]
-LD B, A
-LD A, [DE]
-CP B
-JR Z, CODE_00_38CB
-LD A, B
-SWAP A
-AND $03
-LD [MBC1Bank], A
-LDH [CurrentProgramBank], A
-LD A, B
-LD [DE], A
-AND $0F
-LD B, A
-CALL CODE_00_38E7
+LD A, [HL]                                                  ;load graphic data for this chunk
+LD B, A                                                     ;
+
+LD A, [DE]                                                  ;if matches with what was already loaded, don't reload
+CP B                                                        ;
+JR Z, CODE_00_38CB                                          ;
+
+LD A, B                                                     ;
+SWAP A                                                      ;
+AND $03                                                     ;get PRG bank where the graphics are stored
+LD [MBC1Bank], A                                            ;
+LDH [CurrentProgramBank], A                                 ;
+
+LD A, B                                                     ;
+LD [DE], A                                                  ;
+AND $0F                                                     ;graphics pointer
+LD B, A                                                     ;
+CALL LoadGraphics_00_38E7                                   ;decompress and store
 
 CODE_00_38CB:
-INC DE
-INC HL
-INC C
-LD A, $06
-CP C                                                        ;check if done uploading all 6 chunks of graphics
-JR NZ, LOOP_00_38AC
+INC DE                                                      ;
+INC HL                                                      ;
 
-SetBankAndBackup 1
-RET
+INC C                                                       ;
+LD A, $06                                                   ;
+CP C                                                        ;check if done uploading all 6 chunks of graphics
+JR NZ, LOOP_00_38AC                                         ;
+
+SetBankAndBackup 1                                          ;make sure we have $4000-$7FFF mapped to bank 1
+RET                                                         ;
 
 ;graphic chunk locations in VRAM
-DATA_00_38DB:
+VRAMGraphicChunks_00_38DB:
 dw $8000
 dw $8080
 dw $8800
@@ -7844,97 +7806,112 @@ dw $9000
 dw $9080
 
 ;decompress graphics into RAM to be transported into VRAM later
-CODE_00_38E7:
-PUSH BC
-PUSH DE
-PUSH HL
-PUSH BC
+;B - pointer value
+;C - which graphic chunk to store the graphics in VRAM
+LoadGraphics_00_38E7:
+PUSH BC                                                     ;
+PUSH DE                                                     ;
+PUSH HL                                                     ;
 
-LD A, B
+PUSH BC                                                     ;backup inputs
+LD A, B                                                     ;
 LD HL, POINTERS_02_4000                                     ;note: this can be either POINTERS_02_4000 or POINTERS_03_4000 depending on the current bank
-RST $28
+RST $28                                                     ;
 
-LD H, D
-LD L, E
-LD DE, GFXDecompressionBuffer
-CALL CODE_00_3929
+LD H, D                                                     ;
+LD L, E                                                     ;
+LD DE, GFXDecompressionBuffer                               ;
+CALL DecompressionAlgorithm_00_3929                         ;
 
-POP BC
-LD A, C
-LD HL, DATA_00_38DB
-RST $28
+POP BC                                                      ;
+LD A, C                                                     ;
+LD HL, VRAMGraphicChunks_00_38DB                            ;obtain graphic chunk pointer
+RST $28                                                     ;
 
-LD HL, GFXDecompressionBuffer
-LD B, $08
+LD HL, GFXDecompressionBuffer                               ;
+LD B, $08                                                   ;upload 64 8x8 tiles (1KB of of graphics)
 
-CODE_00_3903:
-PUSH BC
-LD B, $40
-LD A, D
-LDH [$FF8F], A
-LD A, E
-LDH [$FF90], A
-CALL DrawStripeImage_00_380F
-LD B, $40
-LD A, D
-LDH [$FF8F], A
-LD A, E
-LDH [$FF90], A
-CALL DrawStripeImage_00_380F
-LD A, E
-ADD A, $80
-LD E, A
-JR NC, CODE_00_3921
-INC D
+LOOP_00_3903:
+PUSH BC                                                     ;
+LD B, 64                                                    ;transfer 64 bytes of graphics, which is equivalent to 4 8x8 tiles
+
+LD A, D                                                     ;
+LDH [VRAMPointer], A                                        ;
+
+LD A, E                                                     ;
+LDH [VRAMPointer+1], A                                      ;
+
+CALL DrawStripeImage_00_380F                                ;
+
+LD B, 64                                                    ;4 more tiles
+
+LD A, D                                                     ;
+LDH [VRAMPointer], A                                        ;
+
+LD A, E                                                     ;
+LDH [VRAMPointer+1], A                                      ;
+
+CALL DrawStripeImage_00_380F                                ;
+
+LD A, E                                                     ;
+ADD A, 128                                                  ;offset
+LD E, A                                                     ;
+JR NC, CODE_00_3921                                         ;
+
+INC D                                                       ;
 
 CODE_00_3921:
-POP BC
-DEC B
-JR NZ, CODE_00_3903
-POP HL
-POP DE
-POP BC
-RET
+POP BC                                                      ;
+DEC B                                                       ;
+JR NZ, LOOP_00_3903                                         ;keep storing those tiles
 
-;used to transfer graphics I think...
-CODE_00_3929:
-LD A, [HL+]
-LD C, A
+POP HL                                                      ;
+POP DE                                                      ;
+POP BC                                                      ;
+RET                                                         ;
 
-CODE_00_392B:
-LD A, [HL+]                                                 ;check if data matches the byte we stored in C...
-CP C
-JR Z, CODE_00_3933
-LD [DE], A
-INC DE
-JR CODE_00_392B
+;A basic decompression code.
+;DE - decompression buffer
+;HL - graphics data
+DecompressionAlgorithm_00_3929:
+LD A, [HL+]                                                 ;get key byte
+LD C, A                                                     ;that will be in C
+
+LOOP_00_392B:
+LD A, [HL+]                                                 ;
+CP C                                                        ;check if byte matches with key byte
+JR Z, CODE_00_3933                                          ;
+
+LD [DE], A                                                  ;not compressed byte
+INC DE                                                      ;
+JR LOOP_00_392B                                             ;
 
 CODE_00_3933:
-LD A, [HL+]
-AND A
-RET Z                                                       ;check if it was 0
+LD A, [HL+]                                                 ;
+AND A                                                       ;
+RET Z                                                       ;if the next byte after key byte is 0, that means graphics are finished
+LD B, A                                                     ;amount of identical bytes
+LD A, [HL+]                                                 ;data byte that will be copied multiple times
 
-LD B, A
-LD A, [HL+]
+LOOP_00_3938:
+LD [DE], A                                                  ;copy this byte...
+INC DE                                                      ;
 
-CODE_00_3938:
-LD [DE], A
-INC DE
-DEC B
-JR NZ, CODE_00_3938
-JR CODE_00_392B
+DEC B                                                       ;B times
+JR NZ, LOOP_00_3938                                         ;
+JR LOOP_00_392B                                             ;done decompressing that
 
 ;counter addition. used for 4 byte counters.
 ;input:
 ;DE - counter RAM
-;HL - data for amount to be substracted
+;HL - data for amount to be added
 AddTo4ByteCounter_00_393F:
 PUSH DE
 PUSH HL
 AND A
-LD B, $04
+LD B, $04                                                   ;4 byte counter
 
-CODE_00_3944:
+LOOP_00_3944:
 LD A, [DE]
 ADC A, [HL]
 DAA
@@ -7942,8 +7919,9 @@ LD [DE], A
 DEC DE
 DEC HL
 DEC B
-JR NZ, CODE_00_3944
+JR NZ, LOOP_00_3944
 JR NC, CODE_00_395A
+
 INC DE
 LD B, $04                                                   ;
 LD A, $99                                                   ;all become 99
@@ -8035,7 +8013,7 @@ CODE_00_39D0:
 CALL DisableRender_00_3757
 
 LD A, $10
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 CALL DisableLCD_00_3737
 
 LD HL, $C210
@@ -8071,7 +8049,7 @@ CALL EnableLCDAndRender_00_3750
 
 LOOP_00_3A0E:
 LD A, $01
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 
 CALL CODE_00_0FE5
 
@@ -8103,7 +8081,7 @@ RET Z
 LD HL, DATA_00_397A
 LD B, $06
 
-CODE_00_3A3F:
+LOOP_00_3A3F:
 LD C, $08
 LD A, [HL]
 SWAP A
@@ -8124,10 +8102,10 @@ CODE_00_3A59:
 LD A, C
 RST $18
 DEC B
-JR NZ, CODE_00_3A3F
+JR NZ, LOOP_00_3A3F
+
 AND A
 RET
-
 
 CODE_00_3A60:
 DEC C
@@ -8171,8 +8149,8 @@ CALL CODE_00_3AC6
 
 LD A, [HL+]
 LD [DE], A
-
 INC DE
+
 LD A, [HL+]
 LD [DE], A
 
@@ -8273,7 +8251,7 @@ CALL QueueSoundPrep_00_072B                                 ;
 
 CODE_00_3B2A:
 LD A, $01                                                   ;
-CALL WaitForVBlank_372E                                     ;normal sync process
+CALL WaitForVBlank_00_372E                                  ;normal sync process
 DEC D                                                       ;
 JR NZ, LOOP_00_3B1E                                         ;a slight delay between each character
 

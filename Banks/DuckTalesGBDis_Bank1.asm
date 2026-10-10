@@ -2126,20 +2126,20 @@ db $1B,$1C,$2C
 ;HL - palette pointer.
 SetPalettes_01_7ABC:
 LD A, [HL+]
-LDH [Register_BackgroundPalette], A
+LDH [Reg_BackgroundPalette], A
 
 LD A, [HL+]
-LDH [Register_SpritePalette0], A
+LDH [Reg_SpritePalette0], A
 
 LD A, [HL+]
-LDH [Register_SpritePalette1], A
+LDH [Reg_SpritePalette1], A
 RET
 
 CODE_01_7AC6:
 LD HL, SFXQueue                                             ;clear sound related matters
 LD BC, $0056
 CALL ClearRAM_00_37E0
-CALL CODE_00_0183
+CALL Call_InitializeSoundRegisters_00_0183
 
 LD HL, $C000
 LD BC, $0500
@@ -2284,9 +2284,9 @@ JR CODE_01_7B99
 
 CODE_01_7BA4:
 LD A, $9C
-LDH [$FF8F], A
+LDH [VRAMPointer], A
 LD A, $44
-LDH [$FF90], A
+LDH [VRAMPointer+1], A
 LD HL, CounterUpdateBuffer
 LD B, $06
 CALL DrawStripeImage_00_380F
@@ -2343,10 +2343,10 @@ JR CODE_01_7BE3
 ;B - RAM size
 ExtractDigits_01_7BF9:
 LD A, D
-LDH [$FF8F], A
+LDH [VRAMPointer], A
 
 LD A, E
-LDH [$FF90], A
+LDH [VRAMPointer+1], A
 
 LD DE, CounterUpdateBuffer
 
@@ -2488,7 +2488,7 @@ LD B, $04
 
 CODE_01_7CC4:
 LD A, $3C
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 DEC B
 JR NZ, CODE_01_7CC4
 
@@ -2511,7 +2511,7 @@ JR CODE_01_7CCC
 CODE_01_7CE8:
 CALL CODE_01_7CF8
 LD A, $60
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 
 CODE_01_7CF0:
 LD A, $01
@@ -2709,7 +2709,7 @@ CODE_01_7E12:
 CALL CODE_01_7E53
 
 LD A, $40
-CALL WaitForVBlank_372E
+CALL WaitForVBlank_00_372E
 
 CODE_01_7E1A:
 CALL CODE_01_7E53
@@ -2855,6 +2855,8 @@ AND $60
 JR Z, CODE_01_7EF8
 AND $40
 JR Z, CODE_01_7F28
+
+;some unused functionality?
 LDH A, [$FFA3]
 DEC A
 LD B, A
@@ -2866,6 +2868,7 @@ CODE_01_7EF8:
 LD A, [$C603]
 ADD A, $08
 LDH [$FF9C], A
+
 LDH A, [$FF97]
 LDH [$FF98], A
 
@@ -3011,22 +3014,28 @@ CODE_01_7FBC:
 LDH A, [$FF9A]
 ADD A, L
 LDH [$FFA4], A
+
 LDH A, [$FF9C]
 ADD A, E
 LDH [$FFA6], A
 POP DE
 INC DE
+
 LD HL, OAM_Y
 LD A, [CurrentOAMSlot]
 ADD A, L
-LD L, A
+LD L, A                                                     ;get OAM offset
+
 LDH A, [$FFA4]
-LD [HL+], A                                                 ;draws sprite here [at least for scrooge]
-LDH A, [$FFA6]
+LD [HL+], A                                                 ;tile Y-position
+
+LDH A, [$FFA6]                                              ;tile X-position
 LD [HL+], A
-LD A, [DE]
+
+LD A, [DE]                                                  ;tile
 LD [HL+], A
-LDH A, [$FFA8]
+
+LDH A, [$FFA8]                                              ;prop
 LD [HL], A
 
 LD A, [CurrentOAMSlot]

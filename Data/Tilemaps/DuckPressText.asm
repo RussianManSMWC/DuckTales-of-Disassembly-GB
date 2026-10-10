@@ -52,7 +52,7 @@ dwb $99E7
 db 12
 db "HEST DUCK IN"
 
-db $9A,$07
+dwb $9A07
 db 10
 db "THE WORLD."                                             ;they got THE this time!
 

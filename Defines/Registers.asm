@@ -1,5 +1,4 @@
 ;registers
-def MBC1Bank = $2000                                        ;used to switch ROM banks (changes ROM $4000-$7FFF)
 
 def Reg_JoyPad = $FF00                                      ;player inputs
 
@@ -47,15 +46,36 @@ def LCDSpriteRender = %00000010
 def LCDBackgroundRender = %00000001
 ;;
 
+;;
 def Reg_LCDStatus = $FF41
-def Register_CameraYPosition = $FF42
-def Register_CameraXPosition = $FF43
-def Register_LCDYPos = $FF44                                ;can be used for status bar?
-def Register_LCDYCompare = $FF45                            ;no idea tbh
+
+;PPU modes (read only)
+def LCDStatus_Mode0 = 0
+def LCDStatus_Mode1 = 1
+def LCDStatus_Mode2 = 2
+def LCDStatus_Mode3 = 2
+
+def LCDStatus_LCDYEqualCheck = %00000100                    ;indicates that LCD Y pos is equal to LCD Y Compare value
+
+;these can be written for HBlank (STAT) request
+def LCDStatus_Mode0Request = %00001000
+def LCDStatus_Mode1Request = %00010000
+def LCDStatus_Mode2Request = %00100000
+def LCDStatus_LCDYCheck = %01000000                         ;check if Reg_LCDYPos == Reg_LCDYCompare value
+;;
+
+
+def Reg_CameraYPosition = $FF42
+def Reg_CameraXPosition = $FF43
+def Reg_LCDYPos = $FF44                                     ;used to contain LCD's y-pos, read only
+def Reg_LCDYCompare = $FF45                                 ;input LCD y-position where h-blank should be triggered (LCD status must be set to check for condition)
 def Reg_OAMDMA = $FF46                                      ;input A - location from which where to transfer data to OAM, from $XX00 to $XX9F, where XX is A.
-def Register_BackgroundPalette = $FF47
-def Register_SpritePalette0 = $FF48
-def Register_SpritePalette1 = $FF49
+def Reg_BackgroundPalette = $FF47
+def Reg_SpritePalette0 = $FF48
+def Reg_SpritePalette1 = $FF49
+
+def Reg_WindowYPosition = $FF4A
+def Reg_WindowXPosition = $FF4B
 
 ;;
 def Reg_InterruptsEnabler = $FFFF                           ;used to enable various interrupts

@@ -1,6 +1,7 @@
 include "Defines/RAM.asm"
 include "Defines/Constants.asm"
 include "Defines/Registers.asm"
+include "Defines/ExtraHardware/MBC1.asm"
 include "Defines/Enums.asm"
 include "Macros.asm"
 
